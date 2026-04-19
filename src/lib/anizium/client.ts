@@ -6,6 +6,7 @@ import {
   USER_AGENT,
   USER_SESSION,
   CACHE_TTL,
+  WORKER_URL,
 } from "./constants";
 
 function buildHeaders() {
@@ -60,6 +61,11 @@ export async function aniziumFetch<T = unknown>(
   path: string,
   opts: AniziumFetchOpts = {}
 ): Promise<T> {
+  // Cloudflare Worker üzerinden proxy — VPS IP bloklamasını aşar
+  if (WORKER_URL) {
+    return aniziumFetchViaWorker<T>(path, opts);
+  }
+
   const domains = await fetchDomainList();
   const headers = buildHeaders();
   let lastErr: unknown = null;
@@ -99,6 +105,43 @@ export async function aniziumFetch<T = unknown>(
     }
   }
   throw lastErr ?? new Error("All anizium domains failed");
+}
+
+async function aniziumFetchViaWorker<T = unknown>(
+  path: string,
+  opts: AniziumFetchOpts = {}
+): Promise<T> {
+  const url = `${WORKER_URL}${path.startsWith("/") ? path : "/" + path}`;
+  const controller = new AbortController();
+  const signals = [opts.signal, controller.signal].filter(Boolean) as AbortSignal[];
+  const combinedSignal =
+    signals.length > 1
+      ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ??
+        controller.signal
+      : (signals[0] ?? controller.signal);
+  const to = setTimeout(() => controller.abort(), 15_000);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      signal: combinedSignal,
+      next:
+        typeof opts.revalidate === "number"
+          ? { revalidate: opts.revalidate }
+          : undefined,
+      cache: opts.revalidate === 0 ? "no-store" : undefined,
+    });
+  } finally {
+    clearTimeout(to);
+  }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+
+  const data = (await res.json()) as T;
+  return data;
 }
 
 export { fetchDomainList };

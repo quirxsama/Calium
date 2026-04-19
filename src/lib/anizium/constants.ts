@@ -1,3 +1,6 @@
+export const WORKER_URL =
+  process.env.ANIZIUM_WORKER_URL || "";
+
 export const DOMAIN_LIST_URL =
   "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt";
 
