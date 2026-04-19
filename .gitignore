@@ -42,3 +42,4 @@ next-env.d.ts
 .vscode
 .windsurf
 *.md
+.pi/
