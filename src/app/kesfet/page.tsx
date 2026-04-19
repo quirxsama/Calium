@@ -57,7 +57,7 @@ export default async function KesfetPage({
             : "Keşfet"}
         </h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Binlerce anime, film ve dublaj içerik arasında gezin.
+          Binlerce anime, film ve 4K içerik arasında gezin.
         </p>
       </header>
 
