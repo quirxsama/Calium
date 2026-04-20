@@ -39,10 +39,10 @@ export function Navbar() {
   return (
     <header
       className={cn(
-        "sticky top-0 z-50 w-full transition-all duration-300",
+        "sticky top-0 z-50 w-full transition-all duration-300 pt-[env(safe-area-inset-top)]",
         scrolled
           ? "backdrop-blur-xl bg-[var(--background)]/75 border-b border-[var(--border)] shadow-[0_4px_24px_-12px_rgba(0,0,0,0.4)]"
-          : "bg-gradient-to-b from-[var(--background)]/60 to-transparent border-b border-transparent"
+          : "backdrop-blur-md bg-[var(--background)]/70 sm:bg-gradient-to-b sm:from-[var(--background)]/60 sm:to-transparent sm:backdrop-blur-none border-b border-transparent"
       )}
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
