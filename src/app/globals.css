@@ -282,6 +282,16 @@ media-player {
   --media-focus-ring-color: var(--primary);
   border-radius: 12px;
   overflow: hidden;
+
+  /* Altyazı font-size'ı default olarak `--overlay-height`'a bağlı; kontroller
+     açıldığında overlay alanı küçüldüğü için yazı boyutu hover'da değişiyordu.
+     Tam player yüksekliğine (`--media-height`) sabitleyerek bu zıplamayı engelle. */
+  --media-cue-font-size: calc(var(--media-height) / 100 * 4.5);
+}
+
+/* Fullscreen portrait modunda yükseklik devasa, genişlik bazlı ölçü daha doğru. */
+[data-fullscreen][data-orientation="portrait"] {
+  --media-cue-font-size: calc(var(--media-width) / 100 * 4.5);
 }
 
 /* Anizium player — tighten custom settings panel layout */
