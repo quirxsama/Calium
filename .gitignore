@@ -46,3 +46,6 @@ next-env.d.ts
 # sqlite database
 prisma/data/
 /data/
+
+
+ecosystem.config.cjs
