@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getAnimeDetails } from "@/lib/anizium/endpoints";
 import { SeasonTabs } from "@/components/anime/season-tabs";
 import { FavoriteButton } from "@/components/anime/favorite-button";
+import { AddToListButton } from "@/components/anime/add-to-list-button";
 import { Play, Star, Calendar } from "lucide-react";
 import { formatAnimeType } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -124,6 +125,11 @@ export default async function AnimeDetailPage({
               <FavoriteButton
                 id={details.ID}
                 name={details.name}
+                poster={details.poster ?? details.details_banner ?? null}
+              />
+              <AddToListButton
+                animeId={details.ID}
+                animeName={details.name}
                 poster={details.poster ?? details.details_banner ?? null}
               />
             </div>

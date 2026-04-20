@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Search, Menu, X, Flame, Heart, Clock, Home, Sparkles, Mic } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AccountMenu } from "@/components/account/account-menu";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -99,6 +100,7 @@ export function Navbar() {
         </form>
 
         <ThemeToggle />
+        <AccountMenu />
 
         <button
           className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)]"
