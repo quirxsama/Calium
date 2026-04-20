@@ -16,14 +16,19 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
+            # Load NVM and use Node 20
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm use 20
+
             cd /opt/calium
 
             # Pull latest code
             git pull origin master
 
-            # Install dependencies & build
-            npm ci
-            npm run build
+            # Install dependencies & build (explicit Node 20 paths)
+            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npm ci
+            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npm run build
 
             # Restart app via PM2
             pm2 restart calium --update-env
