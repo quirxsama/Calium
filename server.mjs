@@ -125,13 +125,17 @@ const nextUpgradeHandler = app.getUpgradeHandler();
 
 server.on("upgrade", async (req, socket, head) => {
   const { pathname } = parse(req.url ?? "/", true);
-  if (pathname === "/ws") {
+  console.log(`[WS] Upgrade request received: ${pathname}`);
+  if (pathname === "/ws" || pathname === "/ws/") {
+    console.log("[WS] Authenticating...");
     const auth = await authenticateRequest(req);
     if (!auth) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      console.log("[WS] Auth failed, rejecting socket");
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
     }
+    console.log("[WS] Auth successful, upgrading...");
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit("connection", ws, req, auth);
     });
