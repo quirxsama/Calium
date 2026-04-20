@@ -7,6 +7,7 @@ import {
   USER_SESSION,
   CACHE_TTL,
   WORKER_URL,
+  PROXY_KEY,
 } from "./constants";
 
 function buildHeaders() {
@@ -123,7 +124,10 @@ async function aniziumFetchViaWorker<T = unknown>(
 
   let res: Response;
   try {
+    const proxyHeaders: Record<string, string> = {};
+    if (PROXY_KEY) proxyHeaders["x-proxy-key"] = PROXY_KEY;
     res = await fetch(url, {
+      headers: proxyHeaders,
       signal: combinedSignal,
       next:
         typeof opts.revalidate === "number"
