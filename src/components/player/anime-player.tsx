@@ -236,6 +236,18 @@ export function AnimePlayer({
     }
   }
 
+  // Masaüstünde (fare ile) çift tıklama tam ekranı aç/kapat. Dokunmatik
+  // cihazlarda default seek jestleriyle çakışmaması için pointer tipi
+  // "fine" değilse no-op.
+  function onDoubleClick() {
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    const p = playerRef.current;
+    if (!p) return;
+    if (p.state.fullscreen) p.exitFullscreen();
+    else p.enterFullscreen();
+  }
+
   const qualityOptions = useMemo(
     () =>
       (currentTrack?.variants ?? []).map((s, i) => ({
@@ -284,7 +296,7 @@ export function AnimePlayer({
   }
 
   return (
-    <div className="w-full relative" style={cueStyle}>
+    <div className="w-full relative" style={cueStyle} onDoubleClick={onDoubleClick}>
       <MediaPlayer
         ref={playerRef}
         title={title}
