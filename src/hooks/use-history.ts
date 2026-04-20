@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { readHistory, type HistoryEntry } from "@/lib/storage/history";
+import { readHistory, clearHistory, type HistoryEntry } from "@/lib/storage/history";
 
 async function syncHistory() {
   try {
@@ -30,8 +30,10 @@ export function useHistory(): HistoryEntry[] {
     update();
 
     const onLogin = () => { syncHistory(); };
+    const onLogout = () => { clearHistory(); };
     if (!synced.current) {
       window.addEventListener("calium:auth-login", onLogin);
+      window.addEventListener("calium:auth-logout", onLogout);
       synced.current = true;
     }
 
@@ -41,6 +43,7 @@ export function useHistory(): HistoryEntry[] {
       window.removeEventListener("animes:history-changed", update);
       window.removeEventListener("storage", update);
       window.removeEventListener("calium:auth-login", onLogin);
+      window.removeEventListener("calium:auth-logout", onLogout);
     };
   }, []);
   return list;

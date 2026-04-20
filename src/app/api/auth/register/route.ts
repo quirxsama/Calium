@@ -4,11 +4,11 @@ import { hashPassword } from "@/lib/auth/password";
 import { signToken } from "@/lib/auth/jwt";
 import { setSessionCookie } from "@/lib/auth/session";
 import { registerSchema } from "@/lib/auth/validation";
-import { rateLimit } from "@/lib/auth/rate-limit";
+import { rateLimit, getClientIp } from "@/lib/auth/rate-limit";
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
-  const rl = rateLimit(ip);
+  const ip = getClientIp(req);
+  const rl = rateLimit(ip, { bucket: "auth-register", max: 5, windowMs: 60_000 });
   if (!rl.ok) {
     return NextResponse.json({ success: false, error: "Çok fazla istek. Lütfen bekleyin." }, { status: 429 });
   }

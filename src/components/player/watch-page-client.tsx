@@ -11,8 +11,8 @@ import type {
   SubtitleData,
 } from "@/lib/anizium/schemas";
 import { upsertHistory, getHistoryEntry } from "@/lib/storage/history";
-import { ArrowLeft, SkipForward, SkipBack } from "lucide-react";
-import { formatDuration, parseTimeCode } from "@/lib/utils";
+import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
+import { cn, formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
 
 type Props = {
@@ -77,18 +77,27 @@ export function WatchPageClient({ details, episodeId }: Props) {
   }, [details, episodeId, isMovie]);
 
   useEffect(() => {
+    // History animeId başına tek giriş tutuyor; devam süresini yalnızca
+    // kaydedilen bölüm şu an açık olan bölümle aynıysa uygula. Aksi halde
+    // yeni bölüm önceki bölümün progress'iyle seede ediliyordu.
     const h = getHistoryEntry(details.ID);
-    if (h) setStartAt(h.progress);
-  }, [details.ID]);
+    if (h && h.episodeId === episodeId) {
+      setStartAt(h.progress);
+    } else {
+      setStartAt(0);
+    }
+  }, [details.ID, episodeId]);
+
+  const rawSeason = currentSeason?.number;
+  const rawEp = currentEp?.number;
+  const seasonNum = rawSeason != null ? Number(rawSeason) : NaN;
+  const epNum = rawEp != null ? Number(rawEp) : NaN;
+  const animeId = details.ID;
 
   useEffect(() => {
     setState({ status: "loading" });
     const ctrl = new AbortController();
     (async () => {
-      const rawSeason = currentSeason?.number;
-      const rawEp = currentEp?.number;
-      const seasonNum = rawSeason != null ? Number(rawSeason) : NaN;
-      const epNum = rawEp != null ? Number(rawEp) : NaN;
       if (!Number.isFinite(seasonNum) || !Number.isFinite(epNum)) {
         setState({
           status: "error",
@@ -98,7 +107,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
       }
       try {
         const res = await fetch(
-          `/api/anizium/episode?animeId=${encodeURIComponent(details.ID)}&season=${seasonNum}&episode=${epNum}`,
+          `/api/anizium/episode?animeId=${encodeURIComponent(animeId)}&season=${seasonNum}&episode=${epNum}`,
           { signal: ctrl.signal, cache: "no-store" }
         );
         const json = await res.json();
@@ -129,7 +138,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
       }
     })();
     return () => ctrl.abort();
-  }, [episodeId]);
+  }, [animeId, episodeId, seasonNum, epNum]);
 
   const lastSaveRef = useRef(0);
   function onTU(current: number, duration: number) {
@@ -170,19 +179,19 @@ export function WatchPageClient({ details, episodeId }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6 overscroll-contain">
       <div className="mb-4 flex items-center justify-between">
         <Link
           href={`/anime/${encodeURIComponent(details.ID)}`}
-          className="inline-flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          className="inline-flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] min-h-[44px]"
         >
           <ArrowLeft className="h-4 w-4" /> {details.name}
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="hidden sm:flex items-center gap-2">
           {prevEp && (
             <Link
               href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(prevEp.ep.ID)}`}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)]"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)] min-h-[44px]"
             >
               <SkipBack className="h-3.5 w-3.5" /> Önceki Bölüm
             </Link>
@@ -190,12 +199,13 @@ export function WatchPageClient({ details, episodeId }: Props) {
           {nextEp && (
             <Link
               href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)]"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)] min-h-[44px]"
             >
               Sonraki Bölüm <SkipForward className="h-3.5 w-3.5" />
             </Link>
           )}
         </div>
+      
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
@@ -249,11 +259,33 @@ export function WatchPageClient({ details, episodeId }: Props) {
                 {currentEp.overview}
               </p>
             )}
+
+            {/* Mobile prev/next buttons — static, below description */}
+            {(prevEp || nextEp) && (
+              <div className="mt-4 flex items-center gap-2 sm:hidden">
+                {prevEp && (
+                  <Link
+                    href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(prevEp.ep.ID)}`}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] py-2.5 text-xs font-medium min-h-[44px]"
+                  >
+                    <SkipBack className="h-3.5 w-3.5" /> Önceki Bölüm
+                  </Link>
+                )}
+                {nextEp && (
+                  <Link
+                    href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] py-2.5 text-xs font-medium min-h-[44px]"
+                  >
+                    Sonraki Bölüm <SkipForward className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Episode list sidebar */}
-        <aside className="lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto no-scrollbar">
+        {/* Episode list sidebar — desktop */}
+        <aside className="hidden lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto no-scrollbar">
           <h3 className="mb-3 text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wide">
             {currentSeason?.name ?? "Bölümler"}
           </h3>
@@ -265,6 +297,59 @@ export function WatchPageClient({ details, episodeId }: Props) {
           />
         </aside>
       </div>
+
+      {/* Episode list — mobile collapsible */}
+      <MobileEpisodeSection
+        animeId={details.ID}
+        episodes={currentSeason?.episodes ?? []}
+        activeEpisodeId={episodeId}
+        title={currentSeason?.name ?? "Bölümler"}
+      />
+
+    </div>
+  );
+}
+
+function MobileEpisodeSection({
+  animeId,
+  episodes,
+  activeEpisodeId,
+  title,
+}: {
+  animeId: string;
+  episodes: EpisodeData[];
+  activeEpisodeId: string;
+  title: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (episodes.length === 0) return null;
+
+  return (
+    <div className="mt-6 lg:hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm font-semibold min-h-[48px]"
+        aria-expanded={open}
+      >
+        <span>{title} ({episodes.length} bölüm)</span>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-[var(--muted-foreground)] transition-transform duration-200",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+      {open && (
+        <div className="mt-3 max-h-[60vh] overflow-y-auto no-scrollbar">
+          <EpisodeList
+            animeId={animeId}
+            episodes={episodes}
+            activeEpisodeId={activeEpisodeId}
+            variant="sidebar"
+          />
+        </div>
+      )}
     </div>
   );
 }

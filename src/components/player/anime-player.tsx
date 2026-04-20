@@ -20,6 +20,8 @@ import { TURKISH_TRANSLATIONS } from "./translations";
 import { AudioTrackMenuItem, CaptionStyleSubmenu, QualityMenuItem } from "./player-menus";
 import { useCaptionSettings } from "@/hooks/use-caption-settings";
 import { buildCaptionCssVars } from "@/lib/storage/caption-settings";
+import { MobileSeekOverlay } from "./mobile-seek-overlay";
+import { GestureHint } from "./gesture-hint";
 
 type Props = {
   groups: SourceGroup[];
@@ -59,9 +61,16 @@ function isTurkish(name: string): boolean {
   return lower.includes("tur") || lower.includes("türk");
 }
 
-function srtToVttUrl(link: string, name: string): string {
-  // Link zaten .vtt ise olduğu gibi kullan; .srt ise basit düzlem dönüşüm client'ta yapılır.
-  return link;
+function srtToVtt(srt: string): string {
+  const body = srt
+    .replace(/\r+/g, "")
+    .replace(/^\uFEFF/, "")
+    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
+  return `WEBVTT\n\n${body.trim()}\n`;
+}
+
+function isSrtLink(link: string): boolean {
+  return /\.srt(\?|$)/i.test(link);
 }
 
 type MediaType =
@@ -129,6 +138,37 @@ export function AnimePlayer({
   const active = currentTrack?.variants[activeIdx];
   const resumeFromRef = useRef<number | null>(null);
   const { settings, update: updateCaption, reset: resetCaption } = useCaptionSettings();
+  const [resolvedSubtitles, setResolvedSubtitles] = useState<SubtitleData[]>(subtitles);
+
+  // SRT formundaki altyazıları client-side VTT'ye çevir ve Blob URL'ine map'le.
+  useEffect(() => {
+    let cancelled = false;
+    const createdUrls: string[] = [];
+    (async () => {
+      const resolved = await Promise.all(
+        subtitles.map(async (sub) => {
+          if (!isSrtLink(sub.link)) return sub;
+          try {
+            const res = await fetch(sub.link);
+            if (!res.ok) return sub;
+            const text = await res.text();
+            const vtt = srtToVtt(text);
+            const blob = new Blob([vtt], { type: "text/vtt" });
+            const url = URL.createObjectURL(blob);
+            createdUrls.push(url);
+            return { ...sub, link: url };
+          } catch {
+            return sub;
+          }
+        })
+      );
+      if (!cancelled) setResolvedSubtitles(resolved);
+    })();
+    return () => {
+      cancelled = true;
+      for (const u of createdUrls) URL.revokeObjectURL(u);
+    };
+  }, [subtitles]);
 
   // Resume handling — also preserves time on quality switches.
   useEffect(() => {
@@ -196,14 +236,6 @@ export function AnimePlayer({
     }
   }
 
-  if (!active) {
-    return (
-      <div className="aspect-video w-full rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-center text-[var(--muted-foreground)]">
-        Oynatılabilir kaynak bulunamadı.
-      </div>
-    );
-  }
-
   const qualityOptions = useMemo(
     () =>
       (currentTrack?.variants ?? []).map((s, i) => ({
@@ -243,8 +275,16 @@ export function AnimePlayer({
     return off;
   }, []);
 
+  if (!active) {
+    return (
+      <div className="aspect-video w-full rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-center text-[var(--muted-foreground)]">
+        Oynatılabilir kaynak bulunamadı.
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full" style={cueStyle}>
+    <div className="w-full relative" style={cueStyle}>
       <MediaPlayer
         ref={playerRef}
         title={title}
@@ -259,10 +299,10 @@ export function AnimePlayer({
       >
         <MediaProvider>
           {poster && <Poster className="vds-poster" src={poster} alt={title} />}
-          {subtitles.map((sub, i) => (
+          {resolvedSubtitles.map((sub, i) => (
             <Track
               key={`${sub.name}-${i}`}
-              src={srtToVttUrl(sub.link, sub.name)}
+              src={sub.link}
               kind="subtitles"
               label={sub.name}
               language={isTurkish(sub.name) ? "tr" : "en"}
@@ -317,6 +357,8 @@ export function AnimePlayer({
             Sonraki Bölüm <SkipForward className="h-4 w-4" />
           </Link>
         )}
+        <MobileSeekOverlay playerRef={playerRef} />
+        <GestureHint />
       </MediaPlayer>
     </div>
   );

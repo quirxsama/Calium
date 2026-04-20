@@ -4,11 +4,11 @@ import { verifyPassword } from "@/lib/auth/password";
 import { signToken } from "@/lib/auth/jwt";
 import { setSessionCookie } from "@/lib/auth/session";
 import { loginSchema } from "@/lib/auth/validation";
-import { rateLimit } from "@/lib/auth/rate-limit";
+import { rateLimit, getClientIp } from "@/lib/auth/rate-limit";
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
-  const rl = rateLimit(ip);
+  const ip = getClientIp(req);
+  const rl = rateLimit(ip, { bucket: "auth-login", max: 10, windowMs: 60_000 });
   if (!rl.ok) {
     return NextResponse.json({ success: false, error: "Çok fazla istek. Lütfen bekleyin." }, { status: 429 });
   }
@@ -28,12 +28,13 @@ export async function POST(req: NextRequest) {
   const { email, password } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Email veya şifre hatalı." }, { status: 401 });
-  }
 
-  const valid = await verifyPassword(password, user.passwordHash);
-  if (!valid) {
+  // Kullanıcı bulunamadığında da sabit-süre doğrulama çalıştırarak
+  // email-enumeration timing attack'ini engelle.
+  const DUMMY_HASH = "$2a$12$CwTycUXWue0Thq9StjUM0uJ8n3zb0cTiL4m6DwfwKh2Yi8h9gF0A2";
+  const hashToCheck = user?.passwordHash ?? DUMMY_HASH;
+  const valid = await verifyPassword(password, hashToCheck);
+  if (!user || !valid) {
     return NextResponse.json({ success: false, error: "Email veya şifre hatalı." }, { status: 401 });
   }
 

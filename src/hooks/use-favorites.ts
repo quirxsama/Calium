@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { readFavorites, type FavoriteEntry } from "@/lib/storage/favorites";
+import { readFavorites, clearFavorites, type FavoriteEntry } from "@/lib/storage/favorites";
 
 async function syncFavorites() {
   try {
@@ -30,8 +30,10 @@ export function useFavorites(): FavoriteEntry[] {
     update();
 
     const onLogin = () => { syncFavorites(); };
+    const onLogout = () => { clearFavorites(); };
     if (!synced.current) {
       window.addEventListener("calium:auth-login", onLogin);
+      window.addEventListener("calium:auth-logout", onLogout);
       synced.current = true;
     }
 
@@ -41,6 +43,7 @@ export function useFavorites(): FavoriteEntry[] {
       window.removeEventListener("animes:favorites-changed", update);
       window.removeEventListener("storage", update);
       window.removeEventListener("calium:auth-login", onLogin);
+      window.removeEventListener("calium:auth-logout", onLogout);
     };
   }, []);
   return list;

@@ -11,6 +11,11 @@ import {
 } from "./constants";
 
 function buildHeaders() {
+  if (!CF_CONTROL || !USER_SESSION) {
+    throw new Error(
+      "ANIZIUM_CF_CONTROL ve ANIZIUM_USER_SESSION env değişkenleri zorunlu. `.env.local` dosyasını doldurun."
+    );
+  }
   return {
     "cf-control": CF_CONTROL,
     "user-agent": USER_AGENT,

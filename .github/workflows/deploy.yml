@@ -26,8 +26,13 @@ jobs:
             # Pull latest code
             git pull origin master
 
-            # Install dependencies & build (explicit Node 20 paths)
+            # Install dependencies (postinstall runs prisma generate)
             /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npm ci
+
+            # Apply any pending database migrations
+            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npx prisma migrate deploy
+
+            # Build
             /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npm run build
 
             # Restart app via PM2

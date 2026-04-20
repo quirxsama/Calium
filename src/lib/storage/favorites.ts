@@ -45,3 +45,9 @@ export function toggleFavorite(entry: Omit<FavoriteEntry, "addedAt">) {
   if (isFavorite(entry.id)) removeFavorite(entry.id);
   else addFavorite(entry);
 }
+
+export function clearFavorites() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(KEY);
+  window.dispatchEvent(new CustomEvent("animes:favorites-changed"));
+}

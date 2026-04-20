@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Play, Info, ChevronLeft, ChevronRight, Star, Pause, Calendar } from "lucide-react";
@@ -18,6 +18,7 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
   const progressKey = useRef(0);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const list = items.slice(0, 6);
   const total = list.length;
 
@@ -26,6 +27,30 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
     const id = setInterval(() => setIdx((i) => (i + 1) % total), AUTO_MS);
     return () => clearInterval(id);
   }, [total, paused, idx]);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, []);
+
+  const onTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (!touchStartRef.current || total < 2) return;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - touchStartRef.current.x;
+      const dy = touch.clientY - touchStartRef.current.y;
+      const dt = Date.now() - touchStartRef.current.time;
+      touchStartRef.current = null;
+      // Min 50px horizontal, < 500ms, more horizontal than vertical
+      if (Math.abs(dx) < 50 || dt > 500 || Math.abs(dy) > Math.abs(dx)) return;
+      if (dx < 0) {
+        setIdx((i) => (i + 1) % total);
+      } else {
+        setIdx((i) => (i - 1 + total) % total);
+      }
+    },
+    [total]
+  );
 
   if (total === 0) return null;
   const item = list[idx];
@@ -40,9 +65,11 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
 
   return (
     <section
-      className="relative isolate h-[88vh] min-h-[560px] w-full overflow-hidden"
+      className="relative isolate h-[70vh] md:h-[88vh] min-h-[480px] md:min-h-[560px] w-full overflow-hidden"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
     >
       {/* Background stack with crossfade + subtle zoom (Ken Burns) */}
       {list.map((a, i) => {
@@ -142,7 +169,7 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link
               href={`/anime/${encodeURIComponent(item.ID)}`}
-              className="group/btn relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-[var(--primary)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-[0_12px_30px_-10px_var(--primary)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_18px_40px_-10px_var(--primary)]"
+              className="group/btn relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-[var(--primary)] px-6 py-3 md:px-6 md:py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-[0_12px_30px_-10px_var(--primary)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_18px_40px_-10px_var(--primary)] min-h-[44px]"
             >
               <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover/btn:translate-x-full" />
               <Play className="h-4 w-4 fill-current" />
@@ -150,7 +177,7 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
             </Link>
             <Link
               href={`/anime/${encodeURIComponent(item.ID)}`}
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)]/60 px-6 py-3 text-sm font-semibold backdrop-blur-md transition-all duration-300 hover:border-[var(--foreground)]/40 hover:bg-[var(--card)]/80"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)]/60 px-6 py-3 text-sm font-semibold backdrop-blur-md transition-all duration-300 hover:border-[var(--foreground)]/40 hover:bg-[var(--card)]/80 min-h-[44px]"
             >
               <Info className="h-4 w-4" />
               Detaylar

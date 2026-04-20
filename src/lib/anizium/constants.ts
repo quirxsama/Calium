@@ -10,13 +10,12 @@ export const DOMAIN_LIST_URL =
 export const FALLBACK_DOMAIN =
   process.env.ANIZIUM_FALLBACK_DOMAIN || "https://api.anizium.co";
 
-export const CF_CONTROL =
-  process.env.ANIZIUM_CF_CONTROL ||
-  "134e4c040840015655080906544d030f004b4c075b54500f";
+// NOT: CF_CONTROL ve USER_SESSION Anizium upstream'inde kimlik doğrulama
+// için kullanılır. Gizli tutulmalı — default değerleri repo'da bulundurma.
+// `.env.local`'de set edilmemişse ilk istekte explicit hata fırlatılır.
+export const CF_CONTROL = process.env.ANIZIUM_CF_CONTROL || "";
 
-export const USER_SESSION =
-  process.env.ANIZIUM_USER_SESSION ||
-  "01570d01545f55510102040f525d390e00094f0556514e2d1d5201580100071e030350115a53534c05550f535143455c085c54101215";
+export const USER_SESSION = process.env.ANIZIUM_USER_SESSION || "";
 
 export const USER_AGENT =
   process.env.ANIZIUM_USER_AGENT ||

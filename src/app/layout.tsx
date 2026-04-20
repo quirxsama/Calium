@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Inter, Noto_Sans, Nunito } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
+import { MobileNav } from "@/components/layout/mobile-nav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,19 +40,29 @@ export const metadata: Metadata = {
   description:
     "Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
   keywords: ["anime", "anime izle", "türkçe altyazılı anime", "türkçe dublaj anime", "calium"],
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Calium",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
   icons: {
-    icon: [
-      { url: "/icons/icon_16x16.ico", sizes: "16x16", type: "image/x-icon" },
-      { url: "/icons/icon_32x32.ico", sizes: "32x32", type: "image/x-icon" },
-      { url: "/icons/icon_48x48.ico", sizes: "48x48", type: "image/x-icon" },
-      { url: "/icons/icon_64x64.ico", sizes: "64x64", type: "image/x-icon" },
-      { url: "/icons/icon_128x128.ico", sizes: "128x128", type: "image/x-icon" },
-      { url: "/icons/icon_256x256.ico", sizes: "256x256", type: "image/x-icon" },
-      { url: "/icon.webp", type: "image/webp" },
-    ],
-    shortcut: "/icons/icon_32x32.ico",
+    // `src/app/favicon.ico` Next convention ile otomatik yüklenir. Burada sadece
+    // ek web/apple ikonları deklare edilir.
+    icon: [{ url: "/icon.webp", type: "image/webp" }],
     apple: [{ url: "/icon.webp" }],
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f7f8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0c" },
+  ],
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -70,6 +81,7 @@ export default function RootLayout({
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
+          <MobileNav />
         </Providers>
       </body>
     </html>

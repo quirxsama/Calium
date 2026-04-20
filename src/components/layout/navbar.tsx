@@ -3,7 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Search, Menu, X, Flame, Heart, Clock, Home, Sparkles, Mic } from "lucide-react";
+import { Search, Flame, Heart, Clock, Home, Sparkles, Mic } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AccountMenu } from "@/components/account/account-menu";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,6 @@ export function Navbar() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -35,7 +34,6 @@ export function Navbar() {
     e.preventDefault();
     if (!q.trim()) return;
     router.push(`/arama?q=${encodeURIComponent(q.trim())}`);
-    setOpen(false);
   }
 
   return (
@@ -101,43 +99,7 @@ export function Navbar() {
 
         <ThemeToggle />
         <AccountMenu />
-
-        <button
-          className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)]"
-          aria-label="Menü"
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-        </button>
       </div>
-
-      {open && (
-        <div className="md:hidden border-t border-[var(--border)] bg-[var(--background)]">
-          <div className="mx-auto max-w-7xl px-4 py-3 grid grid-cols-2 gap-2">
-            {NAV.map((n) => {
-              const Icon = n.icon;
-              const active =
-                n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
-              return (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  onClick={() => setOpen(false)}
-                  className={cn(
-                    "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition",
-                    active
-                      ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--foreground)]"
-                      : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {n.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </header>
   );
 }

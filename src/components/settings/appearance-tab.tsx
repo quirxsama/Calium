@@ -1,12 +1,13 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor } from "lucide-react";
+import { Sun, Moon, Monitor, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const THEMES = [
   { key: "light", label: "Açık", icon: Sun },
   { key: "dark", label: "Koyu", icon: Moon },
+  { key: "oled", label: "OLED Siyah", icon: Smartphone },
   { key: "system", label: "Sistem", icon: Monitor },
 ] as const;
 
@@ -18,7 +19,7 @@ export function AppearanceTab() {
       <h2 className="mb-1 text-lg font-semibold text-[var(--foreground)]">Görünüm</h2>
       <p className="mb-6 text-sm text-[var(--muted-foreground)]">Tema tercihlerinizi ayarlayın.</p>
 
-      <div className="grid grid-cols-3 gap-3 max-w-md">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-lg">
         {THEMES.map((t) => {
           const Icon = t.icon;
           const active = theme === t.key;

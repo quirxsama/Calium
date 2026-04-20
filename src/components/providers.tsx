@@ -1,6 +1,7 @@
 "use client";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/lib/auth/context";
+import { ToastProvider } from "@/components/ui/toast";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -11,7 +12,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <AuthProvider>
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );

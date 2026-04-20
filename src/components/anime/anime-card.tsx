@@ -22,7 +22,7 @@ export function AnimeCard({ id, name, poster, imdb, badge, className, type }: Pr
       href={href}
       className={cn(
         "group relative block overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] transition-all duration-300 ease-out",
-        "hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-[var(--primary)]/10 hover:border-[var(--primary)]/60",
+        "hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-[var(--primary)]/10 hover:border-[var(--primary)]/60 active:scale-[0.97] touch-none-callout",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
         className
       )}

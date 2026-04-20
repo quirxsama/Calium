@@ -41,14 +41,14 @@ export function ContinueWatching() {
             >
               <Link
                 href={`/izle/${encodeURIComponent(h.animeId)}/${encodeURIComponent(h.episodeId)}`}
-                className="block group"
+                className="block"
               >
-                <div className="relative aspect-[2/3] w-full bg-[var(--muted)]">
+                <div className="group relative aspect-[2/3] w-full bg-[var(--muted)] overflow-hidden">
                   {h.poster && (
                     <Image src={h.poster} alt={h.animeName} fill sizes="(min-width: 768px) 192px, 176px" className="object-cover transition group-hover:scale-105" />
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)]">
                       <Play className="h-3 w-3 fill-current" /> Devam Et
                     </span>

@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth/require-user";
+import { requireUserWithPassword } from "@/lib/auth/require-user";
 import { verifyPassword, hashPassword } from "@/lib/auth/password";
 import { changePasswordSchema } from "@/lib/auth/validation";
+import { rateLimit, getClientIp } from "@/lib/auth/rate-limit";
 
 export async function PATCH(req: NextRequest) {
-  const { user, error } = await requireUser();
+  const ip = getClientIp(req);
+  const rl = rateLimit(ip, { bucket: "account-password", max: 5, windowMs: 60_000 });
+  if (!rl.ok) {
+    return NextResponse.json({ success: false, error: "Çok fazla istek." }, { status: 429 });
+  }
+
+  const { user, error } = await requireUserWithPassword();
   if (error) return error;
 
   let body: unknown;

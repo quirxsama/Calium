@@ -1,0 +1,35 @@
+{
+  "name": "Calium — Anime İzleme Platformu",
+  "short_name": "Calium",
+  "description": "Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0c",
+  "theme_color": "#f43f5e",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon_48x48.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/icons/icon_128x128.ico",
+      "sizes": "128x128",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/icons/icon_256x256.ico",
+      "sizes": "256x256",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/icon.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["entertainment"],
+  "lang": "tr"
+}
