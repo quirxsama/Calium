@@ -47,5 +47,3 @@ next-env.d.ts
 prisma/data/
 /data/
 
-
-ecosystem.config.cjs
