@@ -44,4 +44,5 @@ next-env.d.ts
 *.md
 
 # sqlite database
+prisma/data/
 /data/
