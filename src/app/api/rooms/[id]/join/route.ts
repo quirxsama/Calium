@@ -56,7 +56,7 @@ export async function POST(
     if (normalizeRoomCode(room.code) !== inviteCode) {
       return NextResponse.json({ success: false, error: "Geçersiz davet kodu." }, { status: 403 });
     }
-  } else if (acc.access === "banned" || acc.access === "forbidden") {
+  } else if (acc.access === "forbidden") {
     return NextResponse.json({ success: false, error: "Erişim yok." }, { status: 403 });
   }
 
