@@ -46,6 +46,11 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
+  const presence = usePresenceSubscribe(profile ? [profile.id] : []);
+  const p = presence.get(profile?.id ?? "");
+  const status = p?.status ?? "offline";
+  const activity = activityText(p?.activity ?? null);
+
   useEffect(() => {
     async function load() {
       const res = await fetch(`/api/users/${encodeURIComponent(username)}`);
@@ -103,11 +108,6 @@ export default function ProfilePage() {
       </div>
     );
   }
-
-  const presence = usePresenceSubscribe(profile ? [profile.id] : []);
-  const p = presence.get(profile?.id ?? "");
-  const status = p?.status ?? "offline";
-  const activity = activityText(p?.activity ?? null);
 
   const initials = (profile.displayName || profile.username).slice(0, 2).toUpperCase();
 
