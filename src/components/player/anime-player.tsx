@@ -3,6 +3,7 @@ import "@vidstack/react/player/styles/default/theme.css";
 import "@vidstack/react/player/styles/default/layouts/video.css";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   MediaPlayer,
   MediaProvider,
@@ -13,6 +14,7 @@ import {
   type MediaTimeUpdateEventDetail,
 } from "@vidstack/react";
 import { DefaultVideoLayout, defaultLayoutIcons } from "@vidstack/react/player/layouts/default";
+import { SkipForward } from "lucide-react";
 import type { SourceGroup, SubtitleData } from "@/lib/anizium/schemas";
 import { TURKISH_TRANSLATIONS } from "./translations";
 import { AudioTrackMenuItem, CaptionStyleSubmenu, QualityMenuItem } from "./player-menus";
@@ -28,6 +30,10 @@ type Props = {
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onEnded?: () => void;
   storageKey?: string;
+  introStart?: number | null;
+  introEnd?: number | null;
+  outroStart?: number | null;
+  nextEpisodeHref?: string | null;
 };
 
 type QualityVariant = {
@@ -82,9 +88,16 @@ export function AnimePlayer({
   startAt,
   onTimeUpdate,
   onEnded,
+  introStart,
+  introEnd,
+  outroStart,
+  nextEpisodeHref,
 }: Props) {
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const seededRef = useRef(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [showIntroSkip, setShowIntroSkip] = useState(false);
+  const [showOutroSkip, setShowOutroSkip] = useState(false);
 
   const audioTracks = useMemo<AudioTrack[]>(() => {
     const labelCounts = new Map<string, number>();
@@ -158,9 +171,29 @@ export function AnimePlayer({
   }
 
   function onTU(detail: MediaTimeUpdateEventDetail) {
+    const t = detail.currentTime;
+    setCurrentTime(t);
+    // Intro skip visibility
+    if (introStart != null && introEnd != null && introEnd > introStart) {
+      setShowIntroSkip(t >= introStart && t < introEnd);
+    }
+    // Outro skip visibility
+    if (outroStart != null && outroStart > 0) {
+      setShowOutroSkip(t >= outroStart);
+    } else {
+      setShowOutroSkip(false);
+    }
     if (!onTimeUpdate) return;
     const d = playerRef.current?.state.duration ?? 0;
-    onTimeUpdate(detail.currentTime, d);
+    onTimeUpdate(t, d);
+  }
+
+  function skipIntro() {
+    const p = playerRef.current;
+    if (p && introEnd != null) {
+      p.currentTime = introEnd;
+      setShowIntroSkip(false);
+    }
   }
 
   if (!active) {
@@ -263,6 +296,26 @@ export function AnimePlayer({
             ),
           }}
         />
+        {/* Intro Skip Overlay */}
+        {showIntroSkip && (
+          <button
+            onClick={skipIntro}
+            className="absolute bottom-18 right-4 z-50 flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90"
+            aria-label="Intro'yu atla"
+          >
+            <SkipForward className="h-4 w-4" /> Intro'yu Atla
+          </button>
+        )}
+        {/* Outro / Next Episode Overlay */}
+        {showOutroSkip && nextEpisodeHref && (
+          <Link
+            href={nextEpisodeHref}
+            className="absolute bottom-16 right-4 z-50 flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90"
+            aria-label="Sonraki bölüme geç"
+          >
+            Sonraki Bölüm <SkipForward className="h-4 w-4" />
+          </Link>
+        )}
       </MediaPlayer>
     </div>
   );

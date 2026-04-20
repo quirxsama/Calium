@@ -149,4 +149,5 @@ export type AnimeDetailsResponse = z.infer<typeof AnimeDetailsResponseSchema>;
 export type SubtitleData = z.infer<typeof SubtitleDataSchema>;
 export type SourceItem = z.infer<typeof SourceItemSchema>;
 export type SourceGroup = z.infer<typeof SourceGroupSchema>;
+export type SourceContent = z.infer<typeof SourceContentSchema>;
 export type SourceResponse = z.infer<typeof SourceResponseSchema>;

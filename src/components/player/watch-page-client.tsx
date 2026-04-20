@@ -6,12 +6,13 @@ import { AnimePlayer } from "./anime-player";
 import type {
   AnimeDetails,
   EpisodeData,
+  SourceContent,
   SourceGroup,
   SubtitleData,
 } from "@/lib/anizium/schemas";
 import { upsertHistory, getHistoryEntry } from "@/lib/storage/history";
-import { ArrowLeft, SkipForward } from "lucide-react";
-import { formatDuration } from "@/lib/utils";
+import { ArrowLeft, SkipForward, SkipBack } from "lucide-react";
+import { formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
 
 type Props = {
@@ -26,6 +27,7 @@ type SourcesState =
       status: "ready";
       groups: SourceGroup[];
       subtitles: SubtitleData[];
+      content: SourceContent | null;
     };
 
 export function WatchPageClient({ details, episodeId }: Props) {
@@ -33,10 +35,11 @@ export function WatchPageClient({ details, episodeId }: Props) {
   const [state, setState] = useState<SourcesState>({ status: "loading" });
   const [startAt, setStartAt] = useState<number>(0);
 
-  const { currentSeason, currentEp, nextEp } = useMemo(() => {
+  const { currentSeason, currentEp, nextEp, prevEp } = useMemo(() => {
     let curSeason = null as (typeof details.seasons)[number] | null;
     let curEp = null as EpisodeData | null;
     let nxt = null as { seasonId: string; ep: EpisodeData } | null;
+    let prv = null as { seasonId: string; ep: EpisodeData } | null;
     const seasons = details.seasons ?? [];
     for (let i = 0; i < seasons.length; i++) {
       const s = seasons[i];
@@ -49,10 +52,15 @@ export function WatchPageClient({ details, episodeId }: Props) {
         } else if (i + 1 < seasons.length && seasons[i + 1].episodes.length) {
           nxt = { seasonId: seasons[i + 1].ID, ep: seasons[i + 1].episodes[0] };
         }
+        if (idx - 1 >= 0) {
+          prv = { seasonId: s.ID, ep: s.episodes[idx - 1] };
+        } else if (i - 1 >= 0 && seasons[i - 1].episodes.length) {
+          prv = { seasonId: seasons[i - 1].ID, ep: seasons[i - 1].episodes[seasons[i - 1].episodes.length - 1] };
+        }
         break;
       }
     }
-    return { currentSeason: curSeason, currentEp: curEp, nextEp: nxt };
+    return { currentSeason: curSeason, currentEp: curEp, nextEp: nxt, prevEp: prv };
   }, [details, episodeId]);
 
   useEffect(() => {
@@ -97,6 +105,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
           status: "ready",
           groups,
           subtitles: json.subtitles ?? [],
+          content: json.content ?? null,
         });
       } catch (e: unknown) {
         if ((e as { name?: string })?.name === "AbortError") return;
@@ -156,14 +165,24 @@ export function WatchPageClient({ details, episodeId }: Props) {
         >
           <ArrowLeft className="h-4 w-4" /> {details.name}
         </Link>
-        {nextEp && (
-          <Link
-            href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)]"
-          >
-            Sonraki Bölüm <SkipForward className="h-3.5 w-3.5" />
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {prevEp && (
+            <Link
+              href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(prevEp.ep.ID)}`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)]"
+            >
+              <SkipBack className="h-3.5 w-3.5" /> Önceki Bölüm
+            </Link>
+          )}
+          {nextEp && (
+            <Link
+              href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)]"
+            >
+              Sonraki Bölüm <SkipForward className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
@@ -192,6 +211,10 @@ export function WatchPageClient({ details, episodeId }: Props) {
               startAt={startAt}
               onTimeUpdate={onTU}
               onEnded={onEnded}
+              introStart={parseTimeCode(state.content?.opening?.start)}
+              introEnd={parseTimeCode(state.content?.opening?.end)}
+              outroStart={parseTimeCode(state.content?.next_episode)}
+              nextEpisodeHref={nextEp ? `/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}` : null}
             />
           )}
 

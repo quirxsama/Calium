@@ -19,6 +19,20 @@ export function truncate(str: string | undefined, n = 180) {
   return str.length > n ? str.slice(0, n).trimEnd() + "…" : str;
 }
 
+export function parseTimeCode(val: string | number | null | undefined): number | null {
+  if (val == null) return null;
+  if (typeof val === "number") return val > 0 ? val : null;
+  const trimmed = val.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  if (!isNaN(num) && num > 0) return num;
+  const parts = trimmed.split(":").map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+}
+
 export function formatAnimeType(type: string | null | undefined): string {
   if (!type) return "";
   const key = String(type).toLowerCase().trim();
