@@ -26,6 +26,8 @@ export async function getCurrentUser() {
       role: true,
       profilePublic: true,
       listsPublic: true,
+      isPrivate: true,
+      dndEnabled: true,
       createdAt: true,
     },
   });

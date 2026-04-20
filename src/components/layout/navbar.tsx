@@ -3,9 +3,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Search, Flame, Heart, Clock, Home, Sparkles, Mic } from "lucide-react";
+import { Search, Flame, Heart, Clock, Home, Sparkles, Mic, Users } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AccountMenu } from "@/components/account/account-menu";
+import { NotificationBell } from "@/components/social/notification-bell";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -13,6 +14,7 @@ const NAV = [
   { href: "/kesfet", label: "Keşfet", icon: Sparkles },
   { href: "/top", label: "Top 100", icon: Flame },
   { href: "/dublaj", label: "Türkçe Dublaj", icon: Mic },
+  { href: "/arkadaslar", label: "Sosyal", icon: Users },
   { href: "/favoriler", label: "Favoriler", icon: Heart },
   { href: "/gecmis", label: "Geçmiş", icon: Clock },
 ];
@@ -97,7 +99,19 @@ export function Navbar() {
           </div>
         </form>
 
-        <ThemeToggle />
+        <NotificationBell />
+        {/* Mobilde tema switch yerine Sosyal kısayolu; masaüstünde tema kalır. */}
+        <Link
+          href="/arkadaslar"
+          aria-label="Sosyal"
+          className={cn(
+            "md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition hover:bg-[var(--muted)]",
+            pathname.startsWith("/arkadaslar") && "text-[var(--primary)] border-[var(--primary)]/40"
+          )}
+        >
+          <Users className="h-4 w-4" />
+        </Link>
+        <ThemeToggle className="hidden md:inline-flex" />
         <AccountMenu />
       </div>
     </header>

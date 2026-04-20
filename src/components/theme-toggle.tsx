@@ -2,10 +2,11 @@
 import { useTheme } from "next-themes";
 import { Moon, Sun, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 const CYCLE = ["light", "dark", "oled"] as const;
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string } = {}) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -30,7 +31,10 @@ export function ThemeToggle() {
       type="button"
       aria-label="Tema değiştir"
       onClick={cycle}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+      className={cn(
+        "inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition hover:bg-[var(--muted)]",
+        className
+      )}
     >
       {icon}
     </button>

@@ -38,6 +38,8 @@ export async function PATCH(req: NextRequest) {
   }
   if (parsed.data.profilePublic !== undefined) data.profilePublic = parsed.data.profilePublic;
   if (parsed.data.listsPublic !== undefined) data.listsPublic = parsed.data.listsPublic;
+  if (parsed.data.isPrivate !== undefined) data.isPrivate = parsed.data.isPrivate;
+  if (parsed.data.dndEnabled !== undefined) data.dndEnabled = parsed.data.dndEnabled;
 
   const updated = await prisma.user.update({
     where: { id: user!.id },
@@ -52,6 +54,8 @@ export async function PATCH(req: NextRequest) {
       role: true,
       profilePublic: true,
       listsPublic: true,
+      isPrivate: true,
+      dndEnabled: true,
     },
   });
 

@@ -5,6 +5,8 @@ import { Providers } from "@/components/providers";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { RealtimeProvider } from "@/components/realtime/realtime-provider";
+import { InviteToast } from "@/components/social/invite-toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -78,6 +80,8 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
         <Providers>
+          <RealtimeProvider />
+          <InviteToast />
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />

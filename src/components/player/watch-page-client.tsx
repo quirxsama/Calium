@@ -11,9 +11,11 @@ import type {
   SubtitleData,
 } from "@/lib/anizium/schemas";
 import { upsertHistory, getHistoryEntry } from "@/lib/storage/history";
+import { usePublishActivity } from "@/lib/realtime/presence";
 import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
 import { cn, formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
+import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
 
 type Props = {
   details: AnimeDetails;
@@ -87,6 +89,20 @@ export function WatchPageClient({ details, episodeId }: Props) {
       setStartAt(0);
     }
   }, [details.ID, episodeId]);
+
+  // Real-time: şu an izlediğini takipçilerine yay
+  usePublishActivity({
+    kind: "watching",
+    animeId: details.ID,
+    animeTitle: details.name,
+    episode:
+      typeof currentEp?.number === "number"
+        ? currentEp.number
+        : currentEp?.number
+        ? Number(currentEp.number)
+        : null,
+    roomId: null,
+  });
 
   const rawSeason = currentSeason?.number;
   const rawEp = currentEp?.number;
@@ -204,8 +220,17 @@ export function WatchPageClient({ details, episodeId }: Props) {
               Sonraki Bölüm <SkipForward className="h-3.5 w-3.5" />
             </Link>
           )}
+          {currentEp && (
+            <WatchTogetherButton
+              animeId={details.ID}
+              animeName={details.name}
+              episodeId={currentEp.ID}
+              episodeName={currentEp.name}
+              poster={details.poster ?? details.details_banner ?? null}
+            />
+          )}
         </div>
-      
+
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">

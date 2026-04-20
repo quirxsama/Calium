@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
+import { getFollowStatus, getFriendIds, isFollowing, isBlocked } from "@/lib/social/friends";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
@@ -15,8 +16,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
       bio: true,
       profilePublic: true,
       listsPublic: true,
+      isPrivate: true,
       createdAt: true,
-      _count: { select: { favorites: true, lists: true } },
+      _count: {
+        select: {
+          favorites: true,
+          lists: true,
+          followers: true,
+          following: true,
+        },
+      },
     },
   });
 
@@ -26,18 +35,52 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
 
   const session = await getSession();
   const isOwner = session?.sub === user.id;
+  const viewerId = session?.sub ?? null;
 
-  if (!user.profilePublic && !isOwner) {
+  // Blok kontrolü — engellenmişse 404 gibi davran
+  if (viewerId && !isOwner && (await isBlocked(user.id, viewerId))) {
+    return NextResponse.json({ success: false, error: "Kullanıcı bulunamadı." }, { status: 404 });
+  }
+
+  // Takip durumu (viewer için)
+  const followStatus = viewerId
+    ? await getFollowStatus(viewerId, user.id)
+    : "not_following";
+
+  const friendCount = (await getFriendIds(user.id)).length;
+
+  // Gizli hesap + takipçi değilseniz içerik erişimi yok.
+  const canSeeContent =
+    isOwner ||
+    !user.isPrivate ||
+    (viewerId ? await isFollowing(viewerId, user.id) : false);
+
+  const baseUser = {
+    username: user.username,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    bio: user.bio,
+    profilePublic: user.profilePublic,
+    listsPublic: user.listsPublic,
+    isPrivate: user.isPrivate,
+    createdAt: user.createdAt,
+    _count: {
+      favorites: user._count.favorites,
+      lists: user._count.lists,
+      followers: user._count.followers,
+      following: user._count.following,
+      friends: friendCount,
+    },
+  };
+
+  if (!canSeeContent || (!user.profilePublic && !isOwner)) {
     return NextResponse.json({
       success: true,
-      user: {
-        username: user.username,
-        displayName: user.displayName,
-        avatarUrl: user.avatarUrl,
-        profilePublic: false,
-      },
-      isOwner: false,
+      user: baseUser,
+      isOwner,
+      followStatus,
       lists: [],
+      restricted: true,
     });
   }
 
@@ -55,17 +98,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
 
   return NextResponse.json({
     success: true,
-    user: {
-      username: user.username,
-      displayName: user.displayName,
-      avatarUrl: user.avatarUrl,
-      bio: user.bio,
-      profilePublic: user.profilePublic,
-      listsPublic: user.listsPublic,
-      createdAt: user.createdAt,
-      _count: user._count,
-    },
+    user: baseUser,
     isOwner,
+    followStatus,
     lists,
+    restricted: false,
   });
 }

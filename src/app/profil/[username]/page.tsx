@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { User, Calendar, List, Heart, Lock, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { User, Calendar, List, Heart, Lock, Loader2, Users } from "lucide-react";
+import { FollowButton, type FollowStatus } from "@/components/social/follow-button";
 
 interface ProfileData {
   username: string;
@@ -14,8 +14,15 @@ interface ProfileData {
   bio?: string | null;
   profilePublic: boolean;
   listsPublic?: boolean;
+  isPrivate?: boolean;
   createdAt?: string;
-  _count?: { favorites: number; lists: number };
+  _count?: {
+    favorites: number;
+    lists: number;
+    followers: number;
+    following: number;
+    friends: number;
+  };
 }
 
 interface ListData {
@@ -31,6 +38,8 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [lists, setLists] = useState<ListData[]>([]);
   const [isOwner, setIsOwner] = useState(false);
+  const [followStatus, setFollowStatus] = useState<FollowStatus>("not_following");
+  const [restricted, setRestricted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -44,11 +53,36 @@ export default function ProfilePage() {
         setProfile(data.user);
         setLists(data.lists ?? []);
         setIsOwner(data.isOwner ?? false);
+        setFollowStatus(data.followStatus ?? "not_following");
+        setRestricted(data.restricted ?? false);
       }
       setLoading(false);
     }
     load();
   }, [username]);
+
+  function handleFollowChange(next: FollowStatus) {
+    setFollowStatus(next);
+    setProfile((p) => {
+      if (!p || !p._count) return p;
+      const delta = next === "following" ? 1 : followStatus === "following" ? -1 : 0;
+      return { ...p, _count: { ...p._count, followers: Math.max(0, p._count.followers + delta) } };
+    });
+    // İstek kabul edilirse sayfayı yenilemek gerekir (gizli hesap içeriği için)
+    if (next === "following" && profile?.isPrivate) {
+      setTimeout(() => {
+        fetch(`/api/users/${encodeURIComponent(username)}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) {
+              setProfile(d.user);
+              setLists(d.lists ?? []);
+              setRestricted(d.restricted ?? false);
+            }
+          });
+      }, 300);
+    }
+  }
 
   if (loading) {
     return (
@@ -87,17 +121,55 @@ export default function ProfilePage() {
           )}
         </div>
 
-        <div className="text-center sm:text-left">
-          <h1 className="text-2xl font-bold text-[var(--foreground)]">
-            {profile.displayName || profile.username}
-          </h1>
-          <p className="text-sm text-[var(--muted-foreground)]">@{profile.username}</p>
+        <div className="flex-1 text-center sm:text-left">
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--foreground)] flex items-center gap-2 justify-center sm:justify-start">
+                {profile.displayName || profile.username}
+                {profile.isPrivate && (
+                  <Lock className="h-4 w-4 text-[var(--muted-foreground)]" aria-label="Gizli hesap" />
+                )}
+              </h1>
+              <p className="text-sm text-[var(--muted-foreground)]">@{profile.username}</p>
+            </div>
+            {!isOwner && (
+              <FollowButton
+                username={profile.username}
+                initialStatus={followStatus}
+                isPrivate={profile.isPrivate}
+                onChange={handleFollowChange}
+              />
+            )}
+          </div>
 
           {profile.bio && (
             <p className="mt-2 max-w-md text-sm text-[var(--foreground)]">{profile.bio}</p>
           )}
 
-          <div className="mt-3 flex items-center gap-4 text-sm text-[var(--muted-foreground)]">
+          {profile._count && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-sm sm:justify-start">
+              <Link
+                href={`/profil/${profile.username}/takipciler`}
+                className="text-[var(--foreground)] hover:text-[var(--primary)]"
+              >
+                <span className="font-semibold">{profile._count.followers}</span>
+                <span className="ml-1 text-[var(--muted-foreground)]">takipçi</span>
+              </Link>
+              <Link
+                href={`/profil/${profile.username}/takip`}
+                className="text-[var(--foreground)] hover:text-[var(--primary)]"
+              >
+                <span className="font-semibold">{profile._count.following}</span>
+                <span className="ml-1 text-[var(--muted-foreground)]">takip</span>
+              </Link>
+              <span className="flex items-center gap-1 text-[var(--muted-foreground)]">
+                <Users className="h-3.5 w-3.5" />
+                {profile._count.friends} arkadaş
+              </span>
+            </div>
+          )}
+
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-xs text-[var(--muted-foreground)] sm:justify-start">
             {profile.createdAt && (
               <span className="flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5" />
@@ -120,11 +192,11 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Private Profile */}
-      {!profile.profilePublic && !isOwner ? (
+      {/* Restricted (private hesap + takip etmiyorsun) veya profil gizli */}
+      {restricted || (!profile.profilePublic && !isOwner) ? (
         <div className="flex flex-col items-center gap-2 py-16 text-[var(--muted-foreground)]">
           <Lock className="h-10 w-10" />
-          <p>Bu profil gizli.</p>
+          <p>{profile.isPrivate ? "Gizli hesap — içeriği görmek için takip et." : "Bu profil gizli."}</p>
         </div>
       ) : (
         <>

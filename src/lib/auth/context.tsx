@@ -12,6 +12,8 @@ export interface AuthUser {
   role: string;
   profilePublic: boolean;
   listsPublic: boolean;
+  isPrivate?: boolean;
+  dndEnabled?: boolean;
 }
 
 interface AuthContextValue {

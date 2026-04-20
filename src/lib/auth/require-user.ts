@@ -12,6 +12,8 @@ const SAFE_USER_SELECT = {
   role: true,
   profilePublic: true,
   listsPublic: true,
+  isPrivate: true,
+  dndEnabled: true,
   createdAt: true,
   updatedAt: true,
 } as const;

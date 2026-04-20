@@ -31,6 +31,10 @@ type Props = {
   startAt?: number;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onEnded?: () => void;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onSeeked?: (time: number) => void;
+  onPlayerReady?: (player: MediaPlayerInstance) => void;
   storageKey?: string;
   introStart?: number | null;
   introEnd?: number | null;
@@ -97,6 +101,10 @@ export function AnimePlayer({
   startAt,
   onTimeUpdate,
   onEnded,
+  onPlay,
+  onPause,
+  onSeeked,
+  onPlayerReady,
   introStart,
   introEnd,
   outroStart,
@@ -104,6 +112,7 @@ export function AnimePlayer({
 }: Props) {
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const seededRef = useRef(false);
+  const readyFiredRef = useRef(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
@@ -200,6 +209,10 @@ export function AnimePlayer({
   function onCanPlay(_: MediaCanPlayDetail, _nativeEvent: Event) {
     const p = playerRef.current;
     if (!p) return;
+    if (onPlayerReady && !readyFiredRef.current) {
+      readyFiredRef.current = true;
+      onPlayerReady(p);
+    }
     if (seededRef.current) return;
     const seekTo = resumeFromRef.current ?? (startAt && startAt > 5 ? startAt : null);
     const duration = p.state.duration || Infinity;
@@ -307,6 +320,14 @@ export function AnimePlayer({
         onCanPlay={onCanPlay}
         onTimeUpdate={onTU}
         onEnded={onEnded}
+        onPlay={onPlay}
+        onPause={onPause}
+        onSeeked={(_, native) => {
+          if (!onSeeked) return;
+          const t = playerRef.current?.currentTime ?? 0;
+          void native;
+          onSeeked(t);
+        }}
         className="anizium-player w-full overflow-hidden rounded-xl border border-[var(--border)] bg-black"
       >
         <MediaProvider>

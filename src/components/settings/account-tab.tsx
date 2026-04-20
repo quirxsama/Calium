@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
-import { Loader2, KeyRound, Mail, Trash2, AlertTriangle } from "lucide-react";
+import { Loader2, KeyRound, Mail, Trash2, AlertTriangle, Shield, BellOff, Lock } from "lucide-react";
 
 export function AccountTab() {
   const { user, logout } = useAuth();
@@ -16,6 +16,7 @@ export function AccountTab() {
         <p className="mb-6 text-sm text-[var(--muted-foreground)]">Şifre, email değişikliği ve hesap silme işlemleri.</p>
       </div>
 
+      <PrivacySection />
       <ChangePasswordSection />
       <ChangeEmailSection email={user?.email ?? ""} />
       <DeleteAccountSection
@@ -24,6 +25,104 @@ export function AccountTab() {
           router.push("/");
         }}
       />
+    </div>
+  );
+}
+
+function PrivacySection() {
+  const { user, refresh } = useAuth();
+  const [isPrivate, setIsPrivate] = useState<boolean>(!!user?.isPrivate);
+  const [dnd, setDnd] = useState<boolean>(!!user?.dndEnabled);
+  const [savingKey, setSavingKey] = useState<"isPrivate" | "dndEnabled" | null>(null);
+
+  async function save(key: "isPrivate" | "dndEnabled", value: boolean) {
+    setSavingKey(key);
+    try {
+      const res = await fetch("/api/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        // rollback
+        if (key === "isPrivate") setIsPrivate(!value);
+        else setDnd(!value);
+      } else {
+        refresh?.();
+      }
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <Section icon={<Shield className="h-5 w-5" />} title="Gizlilik ve Bildirimler">
+      <Toggle
+        icon={<Lock className="h-4 w-4" />}
+        label="Özel Profil"
+        description="Açıkken profilini ve içeriklerini sadece onayladığın takipçiler görebilir. Takip istekleri gerekir."
+        value={isPrivate}
+        loading={savingKey === "isPrivate"}
+        onChange={(v) => {
+          setIsPrivate(v);
+          save("isPrivate", v);
+        }}
+      />
+      <div className="my-4 border-t border-[var(--border)]" />
+      <Toggle
+        icon={<BellOff className="h-4 w-4" />}
+        label="Rahatsız Etmeyin (DND)"
+        description="Açıkken davet pop-up'ları ve bildirim sesleri gösterilmez. Bildirimler bildirim merkezinde yine listelenir."
+        value={dnd}
+        loading={savingKey === "dndEnabled"}
+        onChange={(v) => {
+          setDnd(v);
+          save("dndEnabled", v);
+        }}
+      />
+    </Section>
+  );
+}
+
+function Toggle({
+  icon,
+  label,
+  description,
+  value,
+  loading,
+  onChange,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  value: boolean;
+  loading?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 text-[var(--muted-foreground)]">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">{description}</p>
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        disabled={loading}
+        role="switch"
+        aria-checked={value}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-[var(--border)] transition disabled:opacity-50 ${
+          value ? "bg-[var(--primary)]" : "bg-[var(--muted)]"
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+            value ? "translate-x-6" : "translate-x-1"
+          }`}
+        />
+      </button>
     </div>
   );
 }
