@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { RefreshCw, Download, Trash2, Loader2 } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function DataTab() {
   const { user } = useAuth();
+  const { confirm } = useConfirm();
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -75,8 +77,15 @@ export function DataTab() {
     URL.revokeObjectURL(url);
   }
 
-  function clearLocal() {
-    if (!confirm("Tüm yerel verileriniz silinecek. Emin misiniz?")) return;
+  async function clearLocal() {
+    const ok = await confirm({
+      title: "Yerel verileri sil",
+      description: "Tarayıcıdaki favori, geçmiş ve ayarlar temizlenecek.",
+      confirmText: "Sil",
+      cancelText: "Vazgeç",
+      variant: "danger",
+    });
+    if (!ok) return;
     localStorage.removeItem("animes:favorites");
     localStorage.removeItem("animes:history");
     localStorage.removeItem("animes:caption-settings");

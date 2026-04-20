@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, Check, Inbox } from "lucide-react";
+import { Bell, Check, Inbox, X } from "lucide-react";
 import { useAuth } from "@/lib/auth/context";
 import { cn } from "@/lib/utils";
 
@@ -10,7 +10,13 @@ type NotifItem = {
   id: string;
   type: string;
   payload: {
+    inviteId?: string;
     actorId?: string;
+    roomId?: string;
+    roomCode?: string;
+    inviteUrl?: string;
+    targetUserId?: string;
+    requesterId?: string;
     username?: string;
     displayName?: string | null;
     avatarUrl?: string | null;
@@ -26,6 +32,7 @@ const TYPE_LABEL: Record<string, (p: NotifItem["payload"]) => string> = {
   follow_accepted: (p) => `${p.displayName || p.username} takip isteğini kabul etti`,
   invite: (p) => `${p.displayName || p.username} seni birlikte izlemeye davet etti`,
   room_join: (p) => `${p.displayName || p.username} bir oda açtı`,
+  room_request: (p) => `${p.displayName || p.username} birlikte izlemeye çağırıyor`,
 };
 
 export function NotificationBell() {
@@ -53,7 +60,7 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!user) return;
-    refresh();
+    void Promise.resolve().then(refresh);
     // Safety-net polling (WS düşerse). WS event'i geldiğinde de anında refresh.
     const iv = setInterval(refresh, 120_000);
     function onRealtime() {
@@ -84,6 +91,25 @@ export function NotificationBell() {
     });
     setUnread(0);
     setItems((list) => list.map((i) => ({ ...i, readAt: i.readAt ?? new Date().toISOString() })));
+  }
+
+  async function respondInvite(inviteId: string, action: "accept" | "decline") {
+    const res = await fetch("/api/rooms/invite", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inviteId, action }),
+    });
+    const data = await res.json();
+    if (!data.success) return;
+
+    setItems((list) =>
+      list.filter((item) => !(item.type === "invite" && item.payload.inviteId === inviteId))
+    );
+    setUnread((count) => Math.max(0, count - 1));
+
+    if (action === "accept" && data.room?.id) {
+      window.location.href = `/oda/${data.room.id}?code=${encodeURIComponent(data.room.code ?? "")}`;
+    }
   }
 
   if (!user) return null;
@@ -151,9 +177,44 @@ export function NotificationBell() {
                       </div>
                     </div>
                   );
+                  const isInvite = n.type === "invite" && typeof n.payload.inviteId === "string";
+                  const isRoomRequest = n.type === "room_request" && typeof n.payload.roomId === "string";
                   return (
                     <li key={n.id}>
-                      {href ? (
+                      {isInvite ? (
+                        <div className="block hover:bg-[var(--muted)]/40">
+                          {body}
+                          <div className="flex gap-2 px-3 pb-3">
+                            <button
+                              type="button"
+                              onClick={() => respondInvite(String(n.payload.inviteId), "accept")}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                            >
+                              <Check className="h-3.5 w-3.5" /> Kabul Et
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => respondInvite(String(n.payload.inviteId), "decline")}
+                              className="inline-flex items-center justify-center gap-1 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)]"
+                            >
+                              <X className="h-3.5 w-3.5" /> Reddet
+                            </button>
+                          </div>
+                        </div>
+                      ) : isRoomRequest ? (
+                        <div className="block hover:bg-[var(--muted)]/40">
+                          {body}
+                          <div className="flex gap-2 px-3 pb-3">
+                            <Link
+                              href={`/oda/${n.payload.roomId}?code=${encodeURIComponent(String(n.payload.roomCode ?? ""))}`}
+                              onClick={() => setOpen(false)}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                            >
+                              <Check className="h-3.5 w-3.5" /> Odaya Git
+                            </Link>
+                          </div>
+                        </div>
+                      ) : href ? (
                         <Link href={href} onClick={() => setOpen(false)} className="block hover:bg-[var(--muted)]/40">
                           {body}
                         </Link>
@@ -181,8 +242,9 @@ function linkFor(n: NotifItem): string | null {
     case "follow_request":
       return "/arkadaslar/istekler";
     case "invite":
+      return n.payload.roomId ? `/oda/${n.payload.roomId}` : "/arkadaslar";
     case "room_join":
-      // İleride oda id varsa oraya link. Şimdilik arkadaşlar sekmesi.
+    case "room_request":
       return "/arkadaslar";
     default:
       return null;

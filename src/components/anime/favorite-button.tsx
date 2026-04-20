@@ -10,12 +10,11 @@ type Props = {
 };
 
 export function FavoriteButton({ id, name, poster }: Props) {
-  const [fav, setFav] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [fav, setFav] = useState(() => (typeof window !== "undefined" ? isFavorite(id) : false));
+  const mounted = typeof window !== "undefined";
 
   useEffect(() => {
-    setMounted(true);
-    setFav(isFavorite(id));
+    queueMicrotask(() => setFav(isFavorite(id)));
     const onChange = () => setFav(isFavorite(id));
     window.addEventListener("animes:favorites-changed", onChange);
     return () => window.removeEventListener("animes:favorites-changed", onChange);

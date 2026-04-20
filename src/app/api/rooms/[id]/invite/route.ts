@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { inviteSchema } from "@/lib/social/room-schemas";
 import { isEitherBlocked } from "@/lib/social/friends";
 import { createNotification } from "@/lib/social/notifications";
+import { normalizeRoomCode } from "@/lib/social/rooms";
 
 /** Oda üyesi bir başka kullanıcıyı davet eder. Host değilse de davet edebilir
  * (ileride host-only flag eklenebilir; şimdi hem host hem üye). */
@@ -48,6 +49,19 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Geçersiz alanlar" }, { status: 400 });
   }
 
+  const inviteUrl = `/oda/${id}?code=${encodeURIComponent(normalizeRoomCode(room.code))}`;
+
+  if (!parsed.data.username) {
+    return NextResponse.json({
+      success: true,
+      invite: {
+        roomId: id,
+        roomCode: room.code,
+        inviteUrl,
+      },
+    });
+  }
+
   const invitee = await prisma.user.findUnique({
     where: { username: parsed.data.username },
     select: { id: true, username: true, dndEnabled: true },
@@ -66,21 +80,23 @@ export async function POST(
   const existing = await prisma.roomInvite.findFirst({
     where: { roomId: id, inviteeId: invitee.id, status: "pending" },
   });
-  if (!existing) {
-    await prisma.roomInvite.create({
+  const inviteRow =
+    existing ??
+    (await prisma.roomInvite.create({
       data: {
         roomId: id,
         inviterId: session.sub,
         inviteeId: invitee.id,
         status: "pending",
       },
-    });
-  }
+    }));
 
   // DND'li kullanıcıya bildirim yine yazılır; client-side sessizce gösterir.
   await createNotification(invitee.id, "invite", {
+    inviteId: inviteRow.id,
     roomId: id,
     roomCode: room.code,
+    inviteUrl,
     animeName: room.animeName,
     inviterId: session.sub,
     username: room.host.username,
@@ -88,5 +104,14 @@ export async function POST(
     avatarUrl: room.host.avatarUrl,
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    invite: {
+      roomId: id,
+      roomCode: room.code,
+      inviteUrl,
+      inviteId: inviteRow.id,
+      username: invitee.username,
+    },
+  });
 }

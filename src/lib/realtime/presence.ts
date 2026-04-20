@@ -33,7 +33,7 @@ export function usePresenceSubscribe(userIds: string[]): Map<string, PresenceSta
 
   useEffect(() => {
     if (!userIds.length) {
-      setMap(new Map());
+      queueMicrotask(() => setMap(new Map()));
       return;
     }
     if (lastKeyRef.current === key) return;

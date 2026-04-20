@@ -12,7 +12,7 @@ export function GestureHint() {
     const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
     if (!isTouch) return;
     if (localStorage.getItem(LS_KEY)) return;
-    setVisible(true);
+    queueMicrotask(() => setVisible(true));
     const timer = setTimeout(() => {
       setVisible(false);
       localStorage.setItem(LS_KEY, "1");

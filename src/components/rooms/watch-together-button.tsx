@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users2, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth/context";
+import { useToast } from "@/components/ui/toast";
 
 type Props = {
   animeId: string;
@@ -25,6 +26,7 @@ export function WatchTogetherButton({
 }: Props) {
   const router = useRouter();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
   if (!user) return null;
@@ -48,7 +50,7 @@ export function WatchTogetherButton({
       if (data.success && data.room) {
         router.push(`/oda/${data.room.id}`);
       } else {
-        alert(data.error ?? "Oda oluşturulamadı.");
+        toast(data.error ?? "Oda oluşturulamadı.", "error");
       }
     } finally {
       setLoading(false);

@@ -27,11 +27,13 @@ export function UserSearch() {
     if (debRef.current) window.clearTimeout(debRef.current);
     const term = q.trim();
     if (term.length < 2) {
-      setResults([]);
-      setLoading(false);
+      queueMicrotask(() => {
+        setResults([]);
+        setLoading(false);
+      });
       return;
     }
-    setLoading(true);
+    queueMicrotask(() => setLoading(true));
     debRef.current = window.setTimeout(async () => {
       try {
         const res = await fetch(`/api/users/search?q=${encodeURIComponent(term)}`);

@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 
+export const ROOM_INVITE_CODE_LENGTH = 6;
+
 /** 6 karakterlik çakışmayan oda kodu üretir. */
 export async function generateRoomCode(): Promise<string> {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // görsel karışıklık yapanları çıkardık
@@ -12,6 +14,19 @@ export async function generateRoomCode(): Promise<string> {
     if (!exists) return code;
   }
   throw new Error("Room code üretilemedi");
+}
+
+export function normalizeRoomCode(code: string): string {
+  return code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export async function findRoomByCode(code: string) {
+  const normalized = normalizeRoomCode(code);
+  if (normalized.length < ROOM_INVITE_CODE_LENGTH) return null;
+  return prisma.room.findUnique({
+    where: { code: normalized },
+    select: { id: true, code: true, isPublic: true, endedAt: true },
+  });
 }
 
 export type RoomSummary = {
@@ -63,4 +78,32 @@ export async function getRoomAccess(
   if (room.invites[0]) return { access: "invited", isHost: false, roomExists: true };
   if (room.isPublic) return { access: "public", isHost: false, roomExists: true };
   return { access: "forbidden", isHost: false, roomExists: true };
+}
+
+export async function getRoomSummary(roomId: string) {
+  return prisma.room.findUnique({
+    where: { id: roomId },
+    select: {
+      id: true,
+      code: true,
+      hostId: true,
+      animeId: true,
+      animeName: true,
+      episodeId: true,
+      episodeName: true,
+      poster: true,
+      isPublic: true,
+      endedAt: true,
+      host: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+      members: {
+        where: { banned: false, leftAt: null },
+        select: {
+          userId: true,
+          role: true,
+          joinedAt: true,
+          user: { select: { username: true, displayName: true, avatarUrl: true } },
+        },
+      },
+    },
+  });
 }

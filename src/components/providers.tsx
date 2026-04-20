@@ -2,6 +2,7 @@
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/lib/auth/context";
 import { ToastProvider } from "@/components/ui/toast";
+import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -13,7 +14,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <AuthProvider>
         <ToastProvider>
-          {children}
+          <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
         </ToastProvider>
       </AuthProvider>
     </ThemeProvider>

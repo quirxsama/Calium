@@ -7,11 +7,14 @@ import { useAuth } from "@/lib/auth/context";
 
 type InvitePayload = {
   id: string;
+  inviteId?: string;
   roomId: string;
   roomCode?: string;
+  inviteUrl?: string;
   animeName?: string;
   username?: string;
   displayName?: string | null;
+  type?: string;
 };
 
 const AUTO_DISMISS_MS = 15_000;
@@ -29,23 +32,45 @@ export function InviteToast() {
     setActive((list) => list.filter((i) => i.id !== id));
   }, []);
 
+  async function respondInvite(item: InvitePayload, action: "accept" | "decline") {
+    if (!item.inviteId) {
+      dismiss(item.id);
+      if (action === "accept") router.push(item.inviteUrl ?? `/oda/${item.roomId}`);
+      return;
+    }
+
+    const res = await fetch("/api/rooms/invite", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inviteId: item.inviteId, action }),
+    });
+    const data = await res.json();
+    dismiss(item.id);
+    if (action === "accept" && data.success && data.room?.id) {
+      router.push(`/oda/${data.room.id}?code=${encodeURIComponent(data.room.code ?? "")}`);
+    }
+  }
+
   useEffect(() => {
     if (!user || user.dndEnabled) return;
 
     function onNotif(e: Event) {
       const detail = (e as CustomEvent).detail as Record<string, unknown>;
       if (!detail || detail.t !== "notification") return;
-      if (detail.type !== "invite") return;
+      if (detail.type !== "invite" && detail.type !== "room_request") return;
       const p = (detail.payload ?? {}) as Record<string, unknown>;
       const roomId = p.roomId ? String(p.roomId) : null;
       if (!roomId) return;
       const entry: InvitePayload = {
         id: String(detail.id ?? `${Date.now()}-${Math.random()}`),
+        inviteId: p.inviteId ? String(p.inviteId) : undefined,
         roomId,
         roomCode: p.roomCode ? String(p.roomCode) : undefined,
+        inviteUrl: p.inviteUrl ? String(p.inviteUrl) : undefined,
         animeName: p.animeName ? String(p.animeName) : undefined,
         username: p.username ? String(p.username) : undefined,
         displayName: (p.displayName as string | null) ?? null,
+        type: String(detail.type),
       };
       setActive((list) => [...list, entry]);
       // Ses
@@ -74,7 +99,9 @@ export function InviteToast() {
               <Users2 className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">Birlikte izleme daveti</p>
+              <p className="text-sm font-semibold">
+                {it.type === "room_request" ? "Odaya katılma isteği" : "Birlikte izleme daveti"}
+              </p>
               <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
                 <span className="font-medium text-[var(--foreground)]">
                   {it.displayName || it.username || "Biri"}
@@ -85,7 +112,7 @@ export function InviteToast() {
                 ) : (
                   "bir odaya"
                 )}{" "}
-                davet etti.
+                {it.type === "room_request" ? "çağırıyor." : "davet etti."}
               </p>
             </div>
             <button
@@ -100,20 +127,17 @@ export function InviteToast() {
           <div className="flex gap-2 border-t border-[var(--border)] bg-[var(--background)]/40 p-2">
             <button
               type="button"
-              onClick={() => {
-                dismiss(it.id);
-                router.push(`/oda/${it.roomId}`);
-              }}
+              onClick={() => void respondInvite(it, "accept")}
               className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90"
             >
               <Check className="h-3.5 w-3.5" /> Katıl
             </button>
             <button
               type="button"
-              onClick={() => dismiss(it.id)}
+              onClick={() => void respondInvite(it, "decline")}
               className="inline-flex items-center justify-center rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
             >
-              Yoksay
+              Reddet
             </button>
           </div>
         </div>

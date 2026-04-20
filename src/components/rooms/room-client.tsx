@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import type { MediaPlayerInstance } from "@vidstack/react";
@@ -9,8 +9,9 @@ import { AnimePlayer } from "@/components/player/anime-player";
 import { RoomChat, type ChatLine } from "@/components/rooms/room-chat";
 import { useRoomSocket, type PlaybackEvent } from "@/lib/realtime/room";
 import { usePresenceSubscribe } from "@/lib/realtime/presence";
+import { usePublishActivity } from "@/lib/realtime/presence";
 import { PresenceDot } from "@/components/social/presence-dot";
-import { ArrowLeft, Copy, DoorOpen, Loader2, LogOut, Shield, UserPlus, UserX, Crown, Globe, Lock, Volume2 } from "lucide-react";
+import { ArrowLeft, Check, Copy, DoorOpen, Link2, Loader2, LogOut, Shield, UserPlus, UserX, Crown, Globe, Lock, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SourceGroup, SubtitleData, SourceContent } from "@/lib/anizium/schemas";
 
@@ -50,39 +51,48 @@ type SourcesState =
 
 export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [room, setRoom] = useState(initialRoom);
   const [members, setMembers] = useState<Member[]>([]);
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [sources, setSources] = useState<SourcesState>({ status: "loading" });
   const [copied, setCopied] = useState(false);
+  const [copiedWhat, setCopiedWhat] = useState<"link" | "code" | null>(null);
   const [showInvite, setShowInvite] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const suppressEventRef = useRef(false); // remote event uygulanırken event spam'ini kes
+  const remoteSeekRef = useRef<number | null>(null);
+  const remotePausedRef = useRef(true);
+  const lastRemoteSyncAtRef = useRef(0);
+  const remoteClockRef = useRef<{ time: number; sentAt: number } | null>(null);
   const isHostRef = useRef(isHost);
-  isHostRef.current = isHost;
   const sendPlaybackRef = useRef<((a: PlaybackEvent["action"], d?: PlaybackEvent["data"]) => void) | null>(null);
 
-  // --- 1) Ayar: üyelik ve ilk fetch ---
-  // Private odalarda WS `room.join` authorize'u DB'den member bakıyor.
-  // WS bağlantısı fetch tamamlanmadan açılırsa "Davet gerekli" ile reddedilir.
-  // Bu yüzden host değilse önce `/join` tamamlansın, sonra WS'i aç.
-  const [memberReady, setMemberReady] = useState(isHost);
-  useEffect(() => {
-    if (isHost) {
-      setMemberReady(true);
-      refreshRoom();
-      return;
-    }
-    (async () => {
-      try {
-        await fetch(`/api/rooms/${room.id}/join`, { method: "POST" });
-      } catch {}
-      setMemberReady(true);
-      refreshRoom();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePublishActivity({
+    kind: "in_room",
+    animeId: room.animeId,
+    animeTitle: room.animeName,
+    episode: room.episodeName ? undefined : null,
+    roomId: room.id,
+  });
+
+  function safePlay(player: MediaPlayerInstance) {
+    try {
+      const result = player.play();
+      if (result && typeof (result as PromiseLike<void>).then === "function") {
+        void (result as Promise<void>).catch(() => {});
+      }
+    } catch {}
+  }
+
+  function safePause(player: MediaPlayerInstance) {
+    try {
+      player.pause();
+    } catch {}
+  }
 
   const refreshRoom = useCallback(async () => {
     try {
@@ -94,9 +104,43 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     } catch {}
   }, [room.id]);
 
+  useEffect(() => {
+    isHostRef.current = isHost;
+  }, [isHost]);
+
+  // --- 1) Ayar: üyelik ve ilk fetch ---
+  // Private odalarda WS `room.join` authorize'u DB'den member bakıyor.
+  // WS bağlantısı fetch tamamlanmadan açılırsa "Davet gerekli" ile reddedilir.
+  // Bu yüzden host değilse önce `/join` tamamlansın, sonra WS'i aç.
+  const [memberReady, setMemberReady] = useState(isHost);
+  useEffect(() => {
+    if (isHost) {
+      queueMicrotask(() => {
+        void refreshRoom();
+      });
+      return;
+    }
+    (async () => {
+      try {
+        const code = searchParams.get("code")?.trim() || undefined;
+        await fetch(`/api/rooms/${room.id}/join`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(code ? { code } : {}),
+        });
+      } catch {}
+      setMemberReady(true);
+      void refreshRoom();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // --- 2) Kaynakları yükle (episode değişiminde tekrar) ---
   useEffect(() => {
-    setSources({ status: "loading" });
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setSources({ status: "loading" });
+    });
     const ctrl = new AbortController();
     (async () => {
       try {
@@ -153,7 +197,10 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
         setSources({ status: "error", message: (e as Error).message });
       }
     })();
-    return () => ctrl.abort();
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
   }, [room.animeId, room.episodeId]);
 
   // --- 3) WS ---
@@ -161,20 +208,23 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     (m: { userId: string; text: string; ts: number }) => {
       const mem = members.find((x) => x.userId === m.userId);
       const host = m.userId === room.hostId ? room.host : null;
+      const fallbackName = m.userId === currentUser.id
+        ? currentUser.displayName || currentUser.username
+        : mem?.user.displayName || mem?.user.username || host?.displayName || host?.username || "Misafir";
       setLines((prev) => [
         ...prev,
         {
           id: `${m.ts}-${m.userId}`,
           userId: m.userId,
-          username: mem?.user.username ?? host?.username ?? m.userId.slice(0, 6),
-          displayName: mem?.user.displayName ?? host?.displayName ?? null,
+          username: mem?.user.username ?? host?.username ?? currentUser.username,
+          displayName: fallbackName,
           avatarUrl: mem?.user.avatarUrl ?? host?.avatarUrl ?? null,
           text: m.text,
           ts: m.ts,
         },
       ]);
     },
-    [members, room.host, room.hostId]
+    [currentUser.displayName, currentUser.id, currentUser.username, members, room.host, room.hostId]
   );
 
   const onMember = useCallback(
@@ -224,28 +274,69 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     suppressEventRef.current = true;
     const d = e.data ?? {};
     try {
+      const sentAt = typeof d.sentAt === "number" ? d.sentAt : Date.now();
+      if (sentAt < lastRemoteSyncAtRef.current) return;
+      lastRemoteSyncAtRef.current = sentAt;
+
+      const setRemoteClock = (time: number) => {
+        remoteSeekRef.current = time;
+        remoteClockRef.current = { time, sentAt };
+      };
+
       if (e.action === "play") {
-        if (typeof d.time === "number") p.currentTime = d.time;
+        if (typeof d.time === "number") {
+          setRemoteClock(d.time);
+          p.currentTime = d.time;
+        }
+        remotePausedRef.current = false;
         // Autoplay policy: muted olmazsa reddedilebilir — mute fallback.
-        p.play().catch(() => {
+        try {
+          const result = p.play();
+          if (result && typeof (result as PromiseLike<void>).then === "function") {
+            void (result as Promise<void>).catch(() => {
+              try {
+                p.muted = true;
+                setMutedByAutoplay(true);
+                safePlay(p);
+              } catch {}
+            });
+          }
+        } catch {
           try {
             p.muted = true;
             setMutedByAutoplay(true);
-            void p.play().catch(() => {});
+            safePlay(p);
           } catch {}
-        });
+        }
       } else if (e.action === "pause") {
-        if (typeof d.time === "number") p.currentTime = d.time;
-        p.pause();
+        if (typeof d.time === "number") {
+          setRemoteClock(d.time);
+          p.currentTime = d.time;
+        }
+        remotePausedRef.current = true;
+        safePause(p);
       } else if (e.action === "seek") {
         if (typeof d.time === "number") {
+          setRemoteClock(d.time);
           const drift = Math.abs(p.currentTime - d.time);
-          if (drift > 0.5) p.currentTime = d.time;
+          if (drift > 0.9) {
+            p.currentTime = d.time;
+          }
         }
       } else if (e.action === "sync") {
         if (typeof d.time === "number") {
+          setRemoteClock(d.time);
           const drift = Math.abs(p.currentTime - d.time);
-          if (drift > 1.5) p.currentTime = d.time;
+          if (drift > 2.25) {
+            p.currentTime = d.time;
+          }
+        }
+        if (typeof d.paused === "boolean") {
+          remotePausedRef.current = d.paused;
+          if (d.paused && !p.paused) safePause(p);
+          if (!d.paused && p.paused) {
+            safePlay(p);
+          }
         }
       }
     } finally {
@@ -277,7 +368,10 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     onKicked,
     onClosed,
   });
-  sendPlaybackRef.current = sendPlayback;
+
+  useEffect(() => {
+    sendPlaybackRef.current = sendPlayback;
+  }, [sendPlayback]);
 
   // --- 4) Host → guest playback yayınla (imperative listen) ---
   useEffect(() => {
@@ -289,15 +383,15 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
 
     const offPlay = p.listen("play", () => {
       if (suppressEventRef.current) return;
-      sendPlayback("play", { time: p.currentTime });
+      sendPlayback("play", { time: p.currentTime, paused: false, sentAt: Date.now() });
     });
     const offPause = p.listen("pause", () => {
       if (suppressEventRef.current) return;
-      sendPlayback("pause", { time: p.currentTime });
+      sendPlayback("pause", { time: p.currentTime, paused: true, sentAt: Date.now() });
     });
     const offSeeked = p.listen("seeked", () => {
       if (suppressEventRef.current) return;
-      sendPlayback("seek", { time: p.currentTime });
+      sendPlayback("seek", { time: p.currentTime, paused: p.paused, sentAt: Date.now() });
     });
     return () => {
       offPlay();
@@ -312,22 +406,111 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     const iv = setInterval(() => {
       const p = playerRef.current;
       if (!p) return;
-      sendPlayback("sync", { time: p.currentTime });
+      sendPlayback("sync", { time: p.currentTime, paused: p.paused, sentAt: Date.now() });
     }, 10_000);
     return () => clearInterval(iv);
   }, [isHost, ready, playerReady, sendPlayback]);
+
+  useEffect(() => {
+    if (isHost || !playerReady) return;
+    const iv = window.setInterval(() => {
+      const p = playerRef.current;
+      if (!p) return;
+      if (remotePausedRef.current && !p.paused) {
+        safePause(p);
+        return;
+      }
+      if (!remotePausedRef.current && p.paused) {
+        safePlay(p);
+      }
+      const clock = remoteClockRef.current;
+      const target = clock
+        ? clock.time + Math.max(0, (Date.now() - clock.sentAt) / 1000)
+        : remoteSeekRef.current;
+      if (target == null || p.paused) return;
+      const drift = Math.abs(p.currentTime - target);
+      if (drift > 2.4) {
+        p.currentTime = target;
+      }
+    }, 1500);
+    return () => {
+      window.clearInterval(iv);
+    };
+  }, [isHost, playerReady]);
+
+  useEffect(() => {
+    if (isHost || !playerReady) return;
+    const p = playerRef.current;
+    if (!p) return;
+
+    const resyncPlayback = () => {
+      if (suppressEventRef.current) return;
+      suppressEventRef.current = true;
+      try {
+        const clock = remoteClockRef.current;
+        const target = clock
+          ? clock.time + Math.max(0, (Date.now() - clock.sentAt) / 1000)
+          : remoteSeekRef.current;
+        if (typeof target === "number" && Math.abs(p.currentTime - target) > 2.8) {
+          p.currentTime = target;
+        }
+        if (remotePausedRef.current) {
+          if (!p.paused) safePause(p);
+        } else if (p.paused) {
+          safePlay(p);
+        }
+      } finally {
+        window.setTimeout(() => {
+          suppressEventRef.current = false;
+        }, 120);
+      }
+    };
+
+    const offPlay = p.listen("play", resyncPlayback);
+    const offPause = p.listen("pause", resyncPlayback);
+    const offSeeked = p.listen("seeked", resyncPlayback);
+
+    return () => {
+      offPlay();
+      offPause();
+      offSeeked();
+    };
+  }, [isHost, playerReady]);
 
   // --- 5) Üye listesi presence ---
   const memberIds = useMemo(() => members.map((m) => m.userId), [members]);
   const presence = usePresenceSubscribe(memberIds);
 
   // --- 6) Aksiyonlar ---
-  async function copyCode() {
+  async function copyText(value: string, kind: "link" | "code") {
     try {
-      await navigator.clipboard.writeText(`${location.origin}/oda/${room.id}`);
+      await navigator.clipboard.writeText(value);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopiedWhat(kind);
+      setTimeout(() => {
+        setCopied(false);
+        setCopiedWhat(null);
+      }, 1500);
     } catch {}
+  }
+
+  async function generateInviteLink() {
+    setInviteBusy(true);
+    try {
+      const res = await fetch(`/api/rooms/${room.id}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.success && data.invite?.inviteUrl) {
+        const absolute = `${location.origin}${data.invite.inviteUrl}`;
+        setInviteLink(absolute);
+        await copyText(absolute, "link");
+      }
+    } finally {
+      setInviteBusy(false);
+    }
   }
 
   async function leaveRoom() {
@@ -354,6 +537,9 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     });
     const data = await res.json();
     if (data.success) {
+      if (data.invite?.inviteUrl) {
+        setInviteLink(`${location.origin}${data.invite.inviteUrl}`);
+      }
       alert("Davet gönderildi.");
     } else {
       alert(data.error ?? "Gönderilemedi.");
@@ -376,10 +562,19 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
         </span>
         <button
           type="button"
-          onClick={copyCode}
+          onClick={() => void copyText(room.code, "code")}
           className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)]"
         >
-          <Copy className="h-3 w-3" /> {copied ? "Kopyalandı!" : `Kod: ${room.code}`}
+          <Copy className="h-3 w-3" /> {copied && copiedWhat === "code" ? "Kod kopyalandı!" : `Kod: ${room.code}`}
+        </button>
+        <button
+          type="button"
+          onClick={() => void generateInviteLink()}
+          disabled={inviteBusy}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs hover:bg-[var(--muted)] disabled:opacity-60"
+        >
+          {inviteBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
+          {copied && copiedWhat === "link" ? "Bağlantı kopyalandı!" : "Davet linki"}
         </button>
         <button
           type="button"
@@ -400,6 +595,10 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
 
       {showInvite && (
         <InvitePanel
+          inviteCode={room.code}
+          inviteLink={inviteLink}
+          onCopyCode={() => void copyText(room.code, "code")}
+          onCopyLink={() => inviteLink ? void copyText(inviteLink, "link") : void generateInviteLink()}
           onSend={(u) => {
             inviteUser(u);
             setShowInvite(false);
@@ -422,7 +621,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
             </div>
           )}
           {sources.status === "ready" && (
-            <div className={cn(!isHost && "[&_.anizium-player]:pointer-events-none")}>
+            <div className={cn("relative") }>
               <AnimePlayer
                 groups={sources.groups}
                 subtitles={sources.subtitles}
@@ -528,38 +727,71 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
 }
 
 function InvitePanel({
+  inviteCode,
+  inviteLink,
+  onCopyCode,
+  onCopyLink,
   onSend,
   onClose,
 }: {
+  inviteCode: string;
+  inviteLink: string | null;
+  onCopyCode: () => void;
+  onCopyLink: () => void;
   onSend: (username: string) => void;
   onClose: () => void;
 }) {
   const [q, setQ] = useState("");
   return (
-    <div className="mb-3 flex gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Kullanıcı adı"
-        className="flex-1 h-9 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--primary)]"
-      />
-      <button
-        type="button"
-        onClick={() => {
-          const u = q.trim().replace(/^@/, "");
-          if (u.length >= 2) onSend(u);
-        }}
-        className="rounded-full bg-[var(--primary)] px-4 py-1.5 text-sm font-medium text-[var(--primary-foreground)]"
-      >
-        Gönder
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        className="rounded-full border border-[var(--border)] px-4 py-1.5 text-sm"
-      >
-        İptal
-      </button>
+    <div className="mb-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
+      <div className="grid gap-3 md:grid-cols-[1.2fr_1fr]">
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-[var(--muted-foreground)]">Kullanıcı adıyla davet</p>
+          <div className="flex gap-2">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Kullanıcı adı (opsiyonel)"
+              className="flex-1 h-9 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 text-sm outline-none focus:border-[var(--primary)]"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const u = q.trim().replace(/^@/, "");
+                if (u.length >= 2) onSend(u);
+              }}
+              className="rounded-full bg-[var(--primary)] px-4 py-1.5 text-sm font-medium text-[var(--primary-foreground)]"
+            >
+              Gönder
+            </button>
+          </div>
+        </div>
+        <div className="space-y-2 text-xs">
+          <p className="font-medium text-[var(--muted-foreground)]">Kod veya bağlantı ile katılım</p>
+          <div className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-2">
+            <span className="font-semibold tracking-[0.2em]">{inviteCode}</span>
+            <button type="button" onClick={onCopyCode} className="ml-auto text-[var(--primary)] hover:opacity-80">
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onCopyLink}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+          >
+            {inviteLink ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />} {inviteLink ? "Bağlantıyı tekrar kopyala" : "Bağlantı oluştur ve kopyala"}
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-[var(--border)] px-4 py-1.5 text-sm"
+        >
+          Kapat
+        </button>
+      </div>
     </div>
   );
 }

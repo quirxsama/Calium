@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useHistory } from "@/hooks/use-history";
 import { clearHistory, removeHistoryItem } from "@/lib/storage/history";
 import { formatDuration } from "@/lib/utils";
@@ -8,6 +9,18 @@ import { Play, Trash2, X } from "lucide-react";
 
 export default function GecmisPage() {
   const history = useHistory();
+  const { confirm } = useConfirm();
+
+  async function handleClearHistory() {
+    const ok = await confirm({
+      title: "Tüm geçmişi temizle",
+      description: "İzleme geçmişinin tamamı silinecek.",
+      confirmText: "Temizle",
+      cancelText: "Vazgeç",
+      variant: "danger",
+    });
+    if (ok) clearHistory();
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
@@ -20,7 +33,7 @@ export default function GecmisPage() {
         </div>
         {history.length > 0 && (
           <button
-            onClick={() => confirm("Tüm geçmişi silmek istiyor musunuz?") && clearHistory()}
+            onClick={() => void handleClearHistory()}
             className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm hover:bg-[var(--muted)]"
           >
             <Trash2 className="h-3.5 w-3.5" /> Tümünü Temizle

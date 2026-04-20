@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
 import { Plus, List, Loader2, Lock, Globe, Trash2, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { AddAnimeSearch } from "@/components/lists/add-anime-search";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 interface UserList {
   id: string;
@@ -20,6 +20,7 @@ interface UserList {
 export default function MyListsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { confirm } = useConfirm();
   const [lists, setLists] = useState<UserList[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -95,7 +96,14 @@ export default function MyListsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Bu listeyi silmek istediğinize emin misiniz?")) return;
+    const ok = await confirm({
+      title: "Listeyi sil",
+      description: "Liste ve içindeki kayıtlar kaldırılacak.",
+      confirmText: "Sil",
+      cancelText: "Vazgeç",
+      variant: "danger",
+    });
+    if (!ok) return;
     await fetch(`/api/lists/${id}`, { method: "DELETE" });
     setLists((prev) => prev.filter((l) => l.id !== id));
   }

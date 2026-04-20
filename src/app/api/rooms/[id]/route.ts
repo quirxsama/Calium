@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { updateRoomSchema } from "@/lib/social/room-schemas";
-import { getRoomAccess } from "@/lib/social/rooms";
+import { getRoomAccess, getRoomSummary } from "@/lib/social/rooms";
 import { pushToUsers } from "@/lib/realtime/push";
+import { prisma } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
@@ -27,21 +27,7 @@ export async function GET(
   }
 
   // Üye ve host bilgilerini hidrat et
-  const room = await prisma.room.findUnique({
-    where: { id },
-    include: {
-      host: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
-      members: {
-        where: { banned: false },
-        select: {
-          userId: true,
-          role: true,
-          joinedAt: true,
-          user: { select: { username: true, displayName: true, avatarUrl: true } },
-        },
-      },
-    },
-  });
+  const room = await getRoomSummary(id);
 
   return NextResponse.json({
     success: true,

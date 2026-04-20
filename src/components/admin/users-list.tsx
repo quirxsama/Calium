@@ -45,8 +45,10 @@ export function AdminUsersClient() {
   );
 
   useEffect(() => {
-    load(page, query);
-  }, [page, load]);
+    queueMicrotask(() => {
+      load(page, query);
+    });
+  }, [page, query, load]);
 
   function search(e: React.FormEvent) {
     e.preventDefault();

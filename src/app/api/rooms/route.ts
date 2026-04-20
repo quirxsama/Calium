@@ -78,3 +78,43 @@ export async function GET() {
   });
   return NextResponse.json({ success: true, rooms });
 }
+
+export async function PATCH(req: NextRequest) {
+  const session = await getSession();
+  if (!session?.sub) {
+    return NextResponse.json({ success: false, error: "Giriş gerekli." }, { status: 401 });
+  }
+
+  const mode = req.nextUrl.searchParams.get("mode");
+  if (mode !== "public") {
+    return NextResponse.json({ success: false, error: "Geçersiz istek." }, { status: 400 });
+  }
+
+  const rooms = await prisma.room.findMany({
+    where: {
+      endedAt: null,
+      isPublic: true,
+      OR: [
+        { hostId: session.sub },
+        { members: { some: { banned: false, leftAt: null } } },
+      ],
+    },
+    orderBy: { lastActiveAt: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      code: true,
+      animeId: true,
+      animeName: true,
+      episodeId: true,
+      episodeName: true,
+      poster: true,
+      hostId: true,
+      lastActiveAt: true,
+      host: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+      _count: { select: { members: true } },
+    },
+  });
+
+  return NextResponse.json({ success: true, rooms });
+}

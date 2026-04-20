@@ -7,13 +7,22 @@ import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default async function RoomPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RoomPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ code?: string }>;
+}) {
   const { id } = await params;
+  const { code } = await searchParams;
   const user = await getCurrentUser();
-  if (!user) redirect(`/giris?next=${encodeURIComponent(`/oda/${id}`)}`);
+  const nextUrl = code ? `/oda/${id}?code=${encodeURIComponent(code)}` : `/oda/${id}`;
+  if (!user) redirect(`/giris?next=${encodeURIComponent(nextUrl)}`);
 
   const acc = await getRoomAccess(user.id, id);
   if (acc.access === "not_found") notFound();
+  if (acc.access === "banned") redirect("/arkadaslar");
 
   const room = await prisma.room.findUnique({
     where: { id },
@@ -22,6 +31,12 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
     },
   });
   if (!room) notFound();
+
+  const normalizedQueryCode = code?.trim().toUpperCase();
+  const urlAllowed = normalizedQueryCode && normalizedQueryCode === room.code;
+  if (acc.access === "forbidden" && !urlAllowed) {
+    redirect("/arkadaslar");
+  }
 
   return (
     <RoomClient

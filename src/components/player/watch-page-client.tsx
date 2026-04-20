@@ -83,11 +83,13 @@ export function WatchPageClient({ details, episodeId }: Props) {
     // kaydedilen bölüm şu an açık olan bölümle aynıysa uygula. Aksi halde
     // yeni bölüm önceki bölümün progress'iyle seede ediliyordu.
     const h = getHistoryEntry(details.ID);
-    if (h && h.episodeId === episodeId) {
-      setStartAt(h.progress);
-    } else {
-      setStartAt(0);
-    }
+    queueMicrotask(() => {
+      if (h && h.episodeId === episodeId) {
+        setStartAt(h.progress);
+      } else {
+        setStartAt(0);
+      }
+    });
   }, [details.ID, episodeId]);
 
   // Real-time: şu an izlediğini takipçilerine yay
@@ -111,7 +113,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
   const animeId = details.ID;
 
   useEffect(() => {
-    setState({ status: "loading" });
+    queueMicrotask(() => setState({ status: "loading" }));
     const ctrl = new AbortController();
     (async () => {
       if (!Number.isFinite(seasonNum) || !Number.isFinite(epNum)) {
@@ -275,7 +277,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
               {currentEp?.number ? ` · Bölüm ${currentEp.number}` : ""}
               {startAt > 5 && state.status === "ready" && (
                 <span className="ml-2 inline-block rounded-full bg-[var(--primary)]/10 px-2 py-0.5 text-[11px] text-[var(--primary)]">
-                  {formatDuration(startAt)}'den devam ediyor
+                  {formatDuration(startAt)}&apos;den devam ediyor
                 </span>
               )}
             </p>

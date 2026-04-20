@@ -30,7 +30,9 @@ export default function FollowRequestsPage() {
   }
 
   useEffect(() => {
-    load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, []);
 
   async function act(username: string, action: "accept" | "decline") {

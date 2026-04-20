@@ -11,7 +11,7 @@ export type ChatMsg = {
 
 export type PlaybackEvent = {
   action: "play" | "pause" | "seek" | "rate" | "sync";
-  data?: { time?: number; rate?: number };
+  data?: { time?: number; rate?: number; paused?: boolean; sentAt?: number };
   from?: string;
 };
 
@@ -35,8 +35,11 @@ type Handlers = {
  */
 export function useRoomSocket(roomId: string | null, handlers: Handlers) {
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   useEffect(() => {
     if (!roomId) return;

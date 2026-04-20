@@ -25,11 +25,13 @@ function AramaPage() {
   useEffect(() => {
     const query = q.trim();
     if (!query) {
-      setItems(null);
+      queueMicrotask(() => setItems(null));
       return;
     }
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => {
+      setLoading(true);
+      setError(null);
+    });
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {

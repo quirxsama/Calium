@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
+import { joinRoomSchema } from "@/lib/social/room-schemas";
 import { getRoomAccess } from "@/lib/social/rooms";
+import { normalizeRoomCode } from "@/lib/social/rooms";
 
 /** Bir kullanıcıyı odaya üye olarak kaydeder. WS sadece yetki kontrolü yapar;
  * fiziksel üyelik DB'de buradan oluşur. */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -15,6 +17,15 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Giriş gerekli." }, { status: 401 });
   }
 
+  let inviteCode: string | undefined;
+  try {
+    const body = await req.json();
+    const parsed = joinRoomSchema.safeParse(body);
+    if (parsed.success && parsed.data.code) {
+      inviteCode = normalizeRoomCode(parsed.data.code);
+    }
+  } catch {}
+
   const acc = await getRoomAccess(session.sub, id);
   if (acc.access === "not_found") {
     return NextResponse.json({ success: false, error: "Oda bulunamadı." }, { status: 404 });
@@ -22,7 +33,7 @@ export async function POST(
   if (acc.access === "ended") {
     return NextResponse.json({ success: false, error: "Oda kapandı." }, { status: 410 });
   }
-  if (acc.access === "banned" || acc.access === "forbidden") {
+  if (acc.access === "banned") {
     return NextResponse.json({ success: false, error: "Erişim yok." }, { status: 403 });
   }
 
@@ -32,6 +43,21 @@ export async function POST(
       where: { roomId: id, inviteeId: session.sub, status: "pending" },
       data: { status: "accepted" },
     });
+  }
+
+  if (acc.access === "forbidden" && inviteCode) {
+    const room = await prisma.room.findUnique({
+      where: { id },
+      select: { code: true, endedAt: true },
+    });
+    if (!room || room.endedAt) {
+      return NextResponse.json({ success: false, error: "Oda bulunamadı." }, { status: 404 });
+    }
+    if (normalizeRoomCode(room.code) !== inviteCode) {
+      return NextResponse.json({ success: false, error: "Geçersiz davet kodu." }, { status: 403 });
+    }
+  } else if (acc.access === "banned" || acc.access === "forbidden") {
+    return NextResponse.json({ success: false, error: "Erişim yok." }, { status: 403 });
   }
 
   if (acc.access !== "host" && acc.access !== "member") {

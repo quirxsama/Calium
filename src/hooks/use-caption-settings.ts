@@ -14,8 +14,10 @@ export function useCaptionSettings() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setSettings(readCaptionSettings());
-    setHydrated(true);
+    queueMicrotask(() => {
+      setSettings(readCaptionSettings());
+      setHydrated(true);
+    });
     const onChange = () => setSettings(readCaptionSettings());
     window.addEventListener(CAPTION_SETTINGS_EVENT, onChange);
     window.addEventListener("storage", onChange);

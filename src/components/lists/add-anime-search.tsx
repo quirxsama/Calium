@@ -36,12 +36,12 @@ export function AddAnimeSearch({ listId, existingAnimeIds, onAdded, onClose }: P
 
     const q = query.trim();
     if (!q || q.length < 2) {
-      setResults([]);
+      queueMicrotask(() => setResults([]));
       return;
     }
 
     debounceRef.current = setTimeout(async () => {
-      setSearching(true);
+      queueMicrotask(() => setSearching(true));
       try {
         const res = await fetch(`/api/anizium/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();

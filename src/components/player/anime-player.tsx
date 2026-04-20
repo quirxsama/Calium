@@ -10,7 +10,6 @@ import {
   Poster,
   Track,
   type MediaPlayerInstance,
-  type MediaCanPlayDetail,
   type MediaTimeUpdateEventDetail,
 } from "@vidstack/react";
 import { DefaultVideoLayout, defaultLayoutIcons } from "@vidstack/react/player/layouts/default";
@@ -113,7 +112,6 @@ export function AnimePlayer({
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const seededRef = useRef(false);
   const readyFiredRef = useRef(false);
-  const [currentTime, setCurrentTime] = useState(0);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
 
@@ -206,7 +204,7 @@ export function AnimePlayer({
     setActiveIdx(nextQIdx);
   }
 
-  function onCanPlay(_: MediaCanPlayDetail, _nativeEvent: Event) {
+  function onCanPlay() {
     const p = playerRef.current;
     if (!p) return;
     if (onPlayerReady && !readyFiredRef.current) {
@@ -225,7 +223,6 @@ export function AnimePlayer({
 
   function onTU(detail: MediaTimeUpdateEventDetail) {
     const t = detail.currentTime;
-    setCurrentTime(t);
     // Intro skip visibility
     if (introStart != null && introEnd != null && introEnd > introStart) {
       setShowIntroSkip(t >= introStart && t < introEnd);
@@ -322,10 +319,9 @@ export function AnimePlayer({
         onEnded={onEnded}
         onPlay={onPlay}
         onPause={onPause}
-        onSeeked={(_, native) => {
+        onSeeked={() => {
           if (!onSeeked) return;
           const t = playerRef.current?.currentTime ?? 0;
-          void native;
           onSeeked(t);
         }}
         className="anizium-player w-full overflow-hidden rounded-xl border border-[var(--border)] bg-black"
@@ -375,9 +371,9 @@ export function AnimePlayer({
           <button
             onClick={skipIntro}
             className="absolute bottom-18 right-4 z-50 flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90"
-            aria-label="Intro'yu atla"
+            aria-label="Intro&apos;yu atla"
           >
-            <SkipForward className="h-4 w-4" /> Intro'yu Atla
+            <SkipForward className="h-4 w-4" /> Intro&apos;yu Atla
           </button>
         )}
         {/* Outro / Next Episode Overlay */}

@@ -17,7 +17,6 @@ const AUTO_MS = 7000;
 export function HeroCarousel({ items }: { items: HeroItem[] }) {
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
-  const progressKey = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const list = items.slice(0, 6);
   const total = list.length;
@@ -60,8 +59,6 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
       : item.imdb_point
       ? Number(item.imdb_point)
       : null;
-
-  progressKey.current += 0; // noop, keeps ref for clarity
 
   return (
     <section

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Loader2, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   readCaptionSettings,
@@ -31,7 +31,7 @@ export function CaptionTab() {
   const [settings, setSettings] = useState<CaptionSettings | null>(null);
 
   useEffect(() => {
-    setSettings(readCaptionSettings());
+    queueMicrotask(() => setSettings(readCaptionSettings()));
   }, []);
 
   if (!settings) return null;

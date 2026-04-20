@@ -23,8 +23,10 @@ export function PlayerTab() {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
-        if (typeof parsed.defaultQuality === "string") setDefaultQuality(parsed.defaultQuality);
+        queueMicrotask(() => {
+          if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
+          if (typeof parsed.defaultQuality === "string") setDefaultQuality(parsed.defaultQuality);
+        });
       } catch { /* ignore */ }
     }
   }, []);

@@ -49,6 +49,9 @@ export function activityText(a: {
   roomId?: string | null;
 } | null): string | null {
   if (!a) return null;
+  if (a.kind === "in_room" && a.animeTitle) {
+    return a.episode ? `Odada: ${a.animeTitle} — Bölüm ${a.episode}` : `Odada: ${a.animeTitle}`;
+  }
   if (a.kind === "watching" && a.animeTitle) {
     return a.episode ? `${a.animeTitle} — Bölüm ${a.episode}` : a.animeTitle;
   }

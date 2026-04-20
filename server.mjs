@@ -36,24 +36,6 @@ async function getFollowerIdsOf(userId) {
   return rows.map((r) => r.followerId);
 }
 
-async function getFollowingIdsOf(userId) {
-  const rows = await prisma.follow.findMany({
-    where: { followerId: userId },
-    select: { followingId: true },
-  });
-  return rows.map((r) => r.followingId);
-}
-
-/** mutual friends = follower ∩ following */
-async function getFriendIds(userId) {
-  const [followers, following] = await Promise.all([
-    getFollowerIdsOf(userId),
-    getFollowingIdsOf(userId),
-  ]);
-  const set = new Set(followers);
-  return following.filter((id) => set.has(id));
-}
-
 // ---------- Room yetkilendirmesi ----------
 async function authorizeRoomJoin(userId, roomId) {
   try {
