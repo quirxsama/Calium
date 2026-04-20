@@ -43,6 +43,7 @@ export default async function AnimeDetailPage({
   }
 
   const firstEp = details.seasons?.[0]?.episodes?.[0];
+  const isMovie = details.type && ["movie", "film"].includes(details.type.toLowerCase().trim());
   const rating = details.imdb_point ? Number(details.imdb_point) : null;
 
   return (
@@ -113,13 +114,13 @@ export default async function AnimeDetailPage({
             )}
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              {firstEp && (
+              {(firstEp || isMovie) && (
                 <Link
-                  href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(firstEp.ID)}`}
+                  href={`/izle/${encodeURIComponent(details.ID)}/${firstEp ? encodeURIComponent(firstEp.ID) : "film"}`}
                   className="inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-6 py-2.5 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg hover:brightness-110 transition"
                 >
                   <Play className="h-4 w-4 fill-current" />
-                  İlk Bölümü İzle
+                  {isMovie && !firstEp ? "Filmi İzle" : "İlk Bölümü İzle"}
                 </Link>
               )}
               <FavoriteButton
@@ -137,10 +138,12 @@ export default async function AnimeDetailPage({
         </div>
 
         {/* Seasons */}
-        <section className="mt-10">
-          <h2 className="text-2xl font-bold mb-4">Bölümler</h2>
-          <SeasonTabs animeId={details.ID} seasons={details.seasons ?? []} />
-        </section>
+        {(details.seasons ?? []).length > 0 && (
+          <section className="mt-10">
+            <h2 className="text-2xl font-bold mb-4">Bölümler</h2>
+            <SeasonTabs animeId={details.ID} seasons={details.seasons ?? []} />
+          </section>
+        )}
       </div>
     </div>
   );

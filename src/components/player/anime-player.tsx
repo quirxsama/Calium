@@ -227,17 +227,18 @@ export function AnimePlayer({
     [settings]
   );
 
-  // Altyazıları varsayılan olarak aç — Türkçe track'i aktif et
+  // Altyazıları varsayılan olarak aç — Türkçe track'i bir kez aktif et
   useEffect(() => {
     const p = playerRef.current;
     if (!p) return;
-    const off = p.subscribe(({ textTrack }) => {
-      if (textTrack?.mode !== "showing") {
-        const trTrack = p.textTracks.toArray().find(
-          (t) => isTurkish(t.label ?? "")
-        );
-        if (trTrack) trTrack.mode = "showing";
-      }
+    let done = false;
+    const off = p.subscribe(() => {
+      if (done) return;
+      const tracks = p.textTracks.toArray();
+      if (tracks.length === 0) return;
+      done = true;
+      const trTrack = tracks.find((t) => isTurkish(t.label ?? ""));
+      if (trTrack) trTrack.mode = "showing";
     });
     return off;
   }, []);

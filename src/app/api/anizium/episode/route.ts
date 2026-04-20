@@ -4,9 +4,9 @@ import { getEpisodeSources } from "@/lib/anizium/endpoints";
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const animeId = sp.get("animeId") ?? "";
-  const season = Number(sp.get("season") ?? "0");
-  const episode = Number(sp.get("episode") ?? "0");
-  if (!animeId || !season || !episode) {
+  const season = Number(sp.get("season") ?? "NaN");
+  const episode = Number(sp.get("episode") ?? "NaN");
+  if (!animeId || !Number.isFinite(season) || !Number.isFinite(episode)) {
     return NextResponse.json(
       { success: false, error: "animeId, season, episode gerekli", groups: [], subtitles: [] },
       { status: 400 }

@@ -35,12 +35,25 @@ export function WatchPageClient({ details, episodeId }: Props) {
   const [state, setState] = useState<SourcesState>({ status: "loading" });
   const [startAt, setStartAt] = useState<number>(0);
 
+  const isMovie = episodeId === "film";
+
   const { currentSeason, currentEp, nextEp, prevEp } = useMemo(() => {
     let curSeason = null as (typeof details.seasons)[number] | null;
     let curEp = null as EpisodeData | null;
     let nxt = null as { seasonId: string; ep: EpisodeData } | null;
     let prv = null as { seasonId: string; ep: EpisodeData } | null;
     const seasons = details.seasons ?? [];
+
+    // Film: sezon verisi yoksa sanal sezon/bölüm oluştur
+    if (isMovie && seasons.length === 0) {
+      return {
+        currentSeason: { ID: "film", name: details.name, number: 1, episodes: [] as EpisodeData[] },
+        currentEp: { ID: "film", name: details.name, number: 1, overview: details.overview ?? null, banner_link: null } as EpisodeData,
+        nextEp: null,
+        prevEp: null,
+      };
+    }
+
     for (let i = 0; i < seasons.length; i++) {
       const s = seasons[i];
       const idx = s.episodes.findIndex((e) => e.ID === episodeId);
@@ -61,7 +74,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
       }
     }
     return { currentSeason: curSeason, currentEp: curEp, nextEp: nxt, prevEp: prv };
-  }, [details, episodeId]);
+  }, [details, episodeId, isMovie]);
 
   useEffect(() => {
     const h = getHistoryEntry(details.ID);
@@ -72,11 +85,11 @@ export function WatchPageClient({ details, episodeId }: Props) {
     setState({ status: "loading" });
     const ctrl = new AbortController();
     (async () => {
-      const seasonNum = currentSeason?.number
-        ? Number(currentSeason.number)
-        : null;
-      const epNum = currentEp?.number ? Number(currentEp.number) : null;
-      if (!seasonNum || !epNum) {
+      const rawSeason = currentSeason?.number;
+      const rawEp = currentEp?.number;
+      const seasonNum = rawSeason != null ? Number(rawSeason) : NaN;
+      const epNum = rawEp != null ? Number(rawEp) : NaN;
+      if (!Number.isFinite(seasonNum) || !Number.isFinite(epNum)) {
         setState({
           status: "error",
           message: "Bölüm numarası bulunamadı.",
