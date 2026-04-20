@@ -6,8 +6,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { User, Calendar, List, Heart, Lock, Loader2, Users } from "lucide-react";
 import { FollowButton, type FollowStatus } from "@/components/social/follow-button";
+import { usePresenceSubscribe } from "@/lib/realtime/presence";
+import { PresenceDot, activityText } from "@/components/social/presence-dot";
 
 interface ProfileData {
+  id: string;
   username: string;
   displayName: string | null;
   avatarUrl: string | null;
@@ -101,6 +104,11 @@ export default function ProfilePage() {
     );
   }
 
+  const presence = usePresenceSubscribe(profile ? [profile.id] : []);
+  const p = presence.get(profile?.id ?? "");
+  const status = p?.status ?? "offline";
+  const activity = activityText(p?.activity ?? null);
+
   const initials = (profile.displayName || profile.username).slice(0, 2).toUpperCase();
 
   return (
@@ -119,6 +127,7 @@ export default function ProfilePage() {
           ) : (
             <span className="text-2xl font-bold text-[var(--muted-foreground)]">{initials}</span>
           )}
+          <PresenceDot status={status} className="absolute -bottom-1 -right-1 ring-4 ring-[var(--background)]" />
         </div>
 
         <div className="flex-1 text-center sm:text-left">
@@ -131,6 +140,11 @@ export default function ProfilePage() {
                 )}
               </h1>
               <p className="text-sm text-[var(--muted-foreground)]">@{profile.username}</p>
+              {activity && (
+                <p className="mt-1 text-xs font-semibold text-[var(--primary)] animate-in fade-in slide-in-from-top-1">
+                  {activity}
+                </p>
+              )}
             </div>
             {!isOwner && (
               <FollowButton
@@ -149,14 +163,14 @@ export default function ProfilePage() {
           {profile._count && (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-sm sm:justify-start">
               <Link
-                href={`/profil/${profile.username}/takipciler`}
+                href="/arkadaslar"
                 className="text-[var(--foreground)] hover:text-[var(--primary)]"
               >
                 <span className="font-semibold">{profile._count.followers}</span>
                 <span className="ml-1 text-[var(--muted-foreground)]">takipçi</span>
               </Link>
               <Link
-                href={`/profil/${profile.username}/takip`}
+                href="/arkadaslar"
                 className="text-[var(--foreground)] hover:text-[var(--primary)]"
               >
                 <span className="font-semibold">{profile._count.following}</span>

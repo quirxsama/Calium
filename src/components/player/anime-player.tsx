@@ -21,6 +21,8 @@ import { useCaptionSettings } from "@/hooks/use-caption-settings";
 import { buildCaptionCssVars } from "@/lib/storage/caption-settings";
 import { MobileSeekOverlay } from "./mobile-seek-overlay";
 import { GestureHint } from "./gesture-hint";
+const AUDIO_STORAGE_KEY = "anizium-audio-track";
+const VOLUME_STORAGE_KEY = "anizium-player-volume";
 
 type Props = {
   groups: SourceGroup[];
@@ -139,8 +141,19 @@ export function AnimePlayer({
       .filter((t) => t.variants.length > 0);
   }, [groups]);
 
-  const [activeAudio, setActiveAudio] = useState(0);
+  const [activeAudio, setActiveAudio] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const saved = localStorage.getItem(AUDIO_STORAGE_KEY);
+    if (!saved) return 0;
+    const idx = Number(saved);
+    return idx < groups.length ? idx : 0;
+  });
   const [activeIdx, setActiveIdx] = useState(0);
+  const [volume, setVolume] = useState(() => {
+    if (typeof window === "undefined") return 1;
+    const saved = localStorage.getItem(VOLUME_STORAGE_KEY);
+    return saved ? Number(saved) : 1;
+  });
   const currentTrack = audioTracks[activeAudio];
   const active = currentTrack?.variants[activeIdx];
   const resumeFromRef = useRef<number | null>(null);
@@ -200,6 +213,7 @@ export function AnimePlayer({
       const match = nextTrack.variants.findIndex((v) => v.quality === currentQ);
       if (match >= 0) nextQIdx = match;
     }
+    localStorage.setItem(AUDIO_STORAGE_KEY, String(idx));
     setActiveAudio(idx);
     setActiveIdx(nextQIdx);
   }
@@ -246,17 +260,77 @@ export function AnimePlayer({
     }
   }
 
-  // Masaüstünde (fare ile) çift tıklama tam ekranı aç/kapat. Dokunmatik
-  // cihazlarda default seek jestleriyle çakışmaması için pointer tipi
-  // "fine" değilse no-op.
-  function onDoubleClick() {
-    if (typeof window === "undefined") return;
-    if (!window.matchMedia("(pointer: fine)").matches) return;
+
+
+  // Klavye kontrollerini kilitle ve odak yönetimini sağla
+  useEffect(() => {
     const p = playerRef.current;
     if (!p) return;
-    if (p.state.fullscreen) p.exitFullscreen();
-    else p.enterFullscreen();
-  }
+
+    const el = p.el;
+    if (!el) return;
+
+    // Player'ın kendisi focuslanabilir olsun
+    el.setAttribute("tabindex", "0");
+
+    // Kontrol öğesi focus'tayken tehlikeli tuşları engelle
+    const handleKeydown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+
+      const tag = target.tagName.toLowerCase();
+      const role = target.getAttribute("role") ?? "";
+
+      const isControl =
+        ["button", "input", "a"].includes(tag) ||
+        ["button", "slider", "menuitem", "option"].includes(role);
+
+      if (isControl) {
+        const blocked = [" ", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+        if (blocked.includes(e.key)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    };
+
+    el.addEventListener("keydown", handleKeydown, true);
+
+    const disableTab = () => {
+      const focusables = el.querySelectorAll(
+        'button, [role="button"], [role="slider"], [role="menuitem"], input, a, [tabindex]'
+      );
+      focusables.forEach((item) => {
+        if (item !== el && item.getAttribute("tabindex") !== "-1") {
+          item.setAttribute("tabindex", "-1");
+        }
+      });
+    };
+
+    disableTab();
+
+    const observer = new MutationObserver(disableTab);
+    observer.observe(el, { childList: true, subtree: true });
+
+    // Fullscreen'e girince otomatik focusla
+    const onFullscreenChange = (e: any) => {
+      if (e.detail) el.focus();
+    };
+
+    const onNativeFullscreenChange = () => {
+      if (document.fullscreenElement) el.focus();
+    };
+
+    el.addEventListener("fullscreen-change", onFullscreenChange);
+    document.addEventListener("fullscreenchange", onNativeFullscreenChange);
+
+    return () => {
+      el.removeEventListener("keydown", handleKeydown, true);
+      el.removeEventListener("fullscreen-change", onFullscreenChange);
+      document.removeEventListener("fullscreenchange", onNativeFullscreenChange);
+      observer.disconnect();
+    };
+  }, []);
 
   const qualityOptions = useMemo(
     () =>
@@ -306,7 +380,7 @@ export function AnimePlayer({
   }
 
   return (
-    <div className="w-full relative" style={cueStyle} onDoubleClick={onDoubleClick}>
+    <div className="w-full relative" style={cueStyle}>
       <MediaPlayer
         ref={playerRef}
         title={title}
@@ -314,6 +388,11 @@ export function AnimePlayer({
         crossOrigin
         playsInline
         aspectRatio="16/9"
+        volume={volume}
+        onVolumeChange={(detail) => {
+          localStorage.setItem(VOLUME_STORAGE_KEY, String(detail.volume));
+          setVolume(detail.volume);
+        }}
         onCanPlay={onCanPlay}
         onTimeUpdate={onTU}
         onEnded={onEnded}

@@ -11,6 +11,7 @@ import { authenticateRequest } from "./src/server/ws/auth.mjs";
 import {
   clearPresence,
   registerSocket,
+  setPresence,
   sendToUser,
   sendToUsers,
   unregisterSocket,
@@ -159,8 +160,9 @@ wss.on("connection", (ws, _req, auth) => {
   registerSocket(ws, auth.userId);
   sendHello(ws, auth.userId);
 
-  // Default presence = online
-  ctx.onPresenceChanged(auth.userId, { status: "online", activity: null });
+  // Default presence = online (mevcut aktiviteyi koruyarak)
+  const nextState = setPresence(auth.userId, { status: "online" });
+  ctx.onPresenceChanged(auth.userId, nextState);
 
   // Heartbeat
   ws.isAlive = true;

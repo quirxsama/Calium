@@ -254,6 +254,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
           )}
           {state.status === "ready" && (
             <AnimePlayer
+              key={episodeId}
               groups={state.groups}
               subtitles={state.subtitles}
               poster={currentEp?.banner_link ?? details.details_banner ?? null}

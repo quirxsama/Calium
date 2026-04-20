@@ -56,6 +56,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     (viewerId ? await isFollowing(viewerId, user.id) : false);
 
   const baseUser = {
+    id: user.id,
     username: user.username,
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
