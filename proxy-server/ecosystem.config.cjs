@@ -4,7 +4,7 @@ module.exports = {
     {
       name: "anizium-proxy",
       script: "index.mjs",
-      cwd: "/opt/anizium-proxy",
+      cwd: "/opt/anizium-proxy/proxy-server",
       env: {
         NODE_ENV: "production",
         PORT: 3002,
