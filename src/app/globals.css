@@ -273,11 +273,19 @@ media-player {
   --media-focus-ring-color: var(--primary);
   border-radius: 12px;
   overflow: hidden;
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
 
   /* Altyazı font-size'ı default olarak `--overlay-height`'a bağlı; kontroller
      açıldığında overlay alanı küçüldüğü için yazı boyutu hover'da değişiyordu.
      Tam player yüksekliğine (`--media-height`) sabitleyerek bu zıplamayı engelle. */
   --media-cue-font-size: calc(var(--media-height) / 100 * 4.5);
+}
+
+.anizium-player,
+.anizium-player *,
+.anizium-player video {
+  touch-action: manipulation;
 }
 
 /* Fullscreen portrait modunda yükseklik devasa, genişlik bazlı ölçü daha doğru. */
@@ -308,4 +316,22 @@ media-player {
    "Altyazı Stili" entries would appear side by side. */
 .vds-accessibility-menu > .vds-menu-items > .vds-menu-section:has(> .vds-menu-section-body > .vds-font-menu) {
   display: none !important;
+}
+
+@keyframes room-chat-float {
+  0% { opacity: 0; transform: translateX(8px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+.animate-room-chat-float {
+  animation: room-chat-float 220ms ease-out;
+}
+
+@keyframes room-chat-fade-out {
+  0% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(8px); }
+}
+
+.animate-room-chat-fade-out {
+  animation: room-chat-fade-out 380ms ease-in forwards;
 }

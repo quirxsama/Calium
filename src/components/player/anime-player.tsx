@@ -2,8 +2,8 @@
 import "@vidstack/react/player/styles/default/theme.css";
 import "@vidstack/react/player/styles/default/layouts/video.css";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   MediaPlayer,
   MediaProvider,
@@ -19,6 +19,7 @@ import { TURKISH_TRANSLATIONS } from "./translations";
 import { AudioTrackMenuItem, CaptionStyleSubmenu, QualityMenuItem } from "./player-menus";
 import { useCaptionSettings } from "@/hooks/use-caption-settings";
 import { buildCaptionCssVars } from "@/lib/storage/caption-settings";
+import { cn } from "@/lib/utils";
 import { MobileSeekOverlay } from "./mobile-seek-overlay";
 import { GestureHint } from "./gesture-hint";
 const AUDIO_STORAGE_KEY = "anizium-audio-track";
@@ -41,6 +42,12 @@ type Props = {
   introEnd?: number | null;
   outroStart?: number | null;
   nextEpisodeHref?: string | null;
+  onNextEpisode?: () => void;
+  overlayTopRight?: ReactNode;
+  overlayPersistentTopRight?: ReactNode;
+  overlayRightRail?: ReactNode;
+  onFullscreenChange?: (fullscreen: boolean) => void;
+  onControlsVisibilityChange?: (visible: boolean) => void;
 };
 
 type QualityVariant = {
@@ -110,12 +117,26 @@ export function AnimePlayer({
   introEnd,
   outroStart,
   nextEpisodeHref,
+  onNextEpisode,
+  overlayTopRight,
+  overlayPersistentTopRight,
+  overlayRightRail,
+  onFullscreenChange,
+  onControlsVisibilityChange,
 }: Props) {
+  const router = useRouter();
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const seededRef = useRef(false);
   const readyFiredRef = useRef(false);
+  const overlayControlsTimerRef = useRef<number | null>(null);
+  const orientationLockedRef = useRef(false);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
+  const [outroProgress, setOutroProgress] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [isTouchDevice] = useState(
+    () => typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0)
+  );
 
   const audioTracks = useMemo<AudioTrack[]>(() => {
     const labelCounts = new Map<string, number>();
@@ -195,6 +216,35 @@ export function AnimePlayer({
     seededRef.current = false;
   }, [active?.url]);
 
+  useEffect(() => {
+    if (!showOutroSkip || (!nextEpisodeHref && !onNextEpisode)) return;
+
+    const totalMs = 5000;
+    const startedAt = Date.now();
+
+    const resetTimer = window.setTimeout(() => {
+      setOutroProgress(0);
+    }, 0);
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      setOutroProgress(Math.min(1, elapsed / totalMs));
+      if (elapsed >= totalMs) {
+        window.clearInterval(timer);
+        setOutroProgress(1);
+        if (onNextEpisode) {
+          onNextEpisode();
+        } else if (nextEpisodeHref) {
+          router.push(nextEpisodeHref);
+        }
+      }
+    }, 1000);
+
+    return () => {
+      window.clearTimeout(resetTimer);
+      window.clearInterval(timer);
+    };
+  }, [showOutroSkip, nextEpisodeHref, onNextEpisode, router]);
+
   function changeQuality(idx: number) {
     if (idx === activeIdx) return;
     const p = playerRef.current;
@@ -260,6 +310,43 @@ export function AnimePlayer({
     }
   }
 
+  function goNextEpisode() {
+    if (onNextEpisode) {
+      onNextEpisode();
+      return;
+    }
+    if (nextEpisodeHref) {
+      router.push(nextEpisodeHref);
+    }
+  }
+
+  const outroBarStyle = useMemo(() => ({ transform: `scaleX(${outroProgress})` }), [outroProgress]);
+
+  const showOverlayControls = useCallback(() => {
+    setControlsVisible(true);
+    onControlsVisibilityChange?.(true);
+
+    if (overlayControlsTimerRef.current) {
+      window.clearTimeout(overlayControlsTimerRef.current);
+    }
+
+    overlayControlsTimerRef.current = window.setTimeout(() => {
+      setControlsVisible(false);
+      onControlsVisibilityChange?.(false);
+      overlayControlsTimerRef.current = null;
+    }, 2200);
+  }, [onControlsVisibilityChange]);
+
+  const hideOverlayControls = useCallback(() => {
+    if (overlayControlsTimerRef.current) {
+      window.clearTimeout(overlayControlsTimerRef.current);
+      overlayControlsTimerRef.current = null;
+    }
+
+    setControlsVisible(false);
+    onControlsVisibilityChange?.(false);
+  }, [onControlsVisibilityChange]);
+
 
 
   // Klavye kontrollerini kilitle ve odak yönetimini sağla
@@ -269,6 +356,7 @@ export function AnimePlayer({
 
     const el = p.el;
     if (!el) return;
+    const isTouch = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
 
     // Player'ın kendisi focuslanabilir olsun
     el.setAttribute("tabindex", "0");
@@ -312,25 +400,88 @@ export function AnimePlayer({
     const observer = new MutationObserver(disableTab);
     observer.observe(el, { childList: true, subtree: true });
 
+    const blockMobileDoubleClick = (e: MouseEvent) => {
+      if (!isTouch) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          'button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a, .vds-controls, .vds-menu'
+        )
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const lockLandscapeOrientation = async () => {
+      if (!isTouch || orientationLockedRef.current) return;
+
+      const orientationApi = screen.orientation as (ScreenOrientation & {
+        lock?: (orientation: string) => Promise<void>;
+        unlock?: () => void;
+      }) | undefined;
+
+      if (!orientationApi?.lock) return;
+
+      try {
+        await orientationApi.lock("landscape");
+        orientationLockedRef.current = true;
+      } catch {}
+    };
+
+    const unlockOrientation = () => {
+      const orientationApi = screen.orientation as (ScreenOrientation & {
+        unlock?: () => void;
+      }) | undefined;
+
+      if (!orientationLockedRef.current || !orientationApi?.unlock) return;
+
+      try {
+        orientationApi.unlock();
+      } catch {}
+
+      orientationLockedRef.current = false;
+    };
+
     // Fullscreen'e girince otomatik focusla
-    const onFullscreenChange = (e: any) => {
-      if (e.detail) el.focus();
+    const handleVidstackFullscreenChange = (e: Event) => {
+      const detail = (e as CustomEvent<boolean>).detail;
+      if (detail && !isTouch) el.focus();
+      if (detail) {
+        void lockLandscapeOrientation();
+      } else {
+        unlockOrientation();
+      }
+      onFullscreenChange?.(Boolean(detail));
     };
 
     const onNativeFullscreenChange = () => {
-      if (document.fullscreenElement) el.focus();
+      const fullscreen = Boolean(document.fullscreenElement);
+      if (fullscreen && !isTouch) el.focus();
+      if (fullscreen) {
+        void lockLandscapeOrientation();
+      } else {
+        unlockOrientation();
+      }
+      onFullscreenChange?.(fullscreen);
     };
 
-    el.addEventListener("fullscreen-change", onFullscreenChange);
+    el.addEventListener("fullscreen-change", handleVidstackFullscreenChange);
+    el.addEventListener("dblclick", blockMobileDoubleClick, true);
     document.addEventListener("fullscreenchange", onNativeFullscreenChange);
 
     return () => {
       el.removeEventListener("keydown", handleKeydown, true);
-      el.removeEventListener("fullscreen-change", onFullscreenChange);
+      el.removeEventListener("fullscreen-change", handleVidstackFullscreenChange);
+      el.removeEventListener("dblclick", blockMobileDoubleClick, true);
       document.removeEventListener("fullscreenchange", onNativeFullscreenChange);
+      unlockOrientation();
       observer.disconnect();
     };
-  }, []);
+  }, [onFullscreenChange]);
 
   const qualityOptions = useMemo(
     () =>
@@ -371,6 +522,20 @@ export function AnimePlayer({
     return off;
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      showOverlayControls();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (overlayControlsTimerRef.current) {
+        window.clearTimeout(overlayControlsTimerRef.current);
+        overlayControlsTimerRef.current = null;
+      }
+    };
+  }, [active?.url, showOverlayControls]);
+
   if (!active) {
     return (
       <div className="aspect-video w-full rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-center text-[var(--muted-foreground)]">
@@ -380,7 +545,14 @@ export function AnimePlayer({
   }
 
   return (
-    <div className="w-full relative" style={cueStyle}>
+    <div
+      className="w-full relative"
+      style={cueStyle}
+      onMouseMove={showOverlayControls}
+      onMouseEnter={showOverlayControls}
+      onTouchStart={showOverlayControls}
+      onMouseLeave={hideOverlayControls}
+    >
       <MediaPlayer
         ref={playerRef}
         title={title}
@@ -421,6 +593,7 @@ export function AnimePlayer({
         <DefaultVideoLayout
           icons={defaultLayoutIcons}
           translations={TURKISH_TRANSLATIONS}
+          noGestures={isTouchDevice}
           slots={{
             settingsMenuItemsStart: (
               <>
@@ -445,6 +618,21 @@ export function AnimePlayer({
             ),
           }}
         />
+        {overlayTopRight && controlsVisible && (
+          <div className={cn("absolute left-3 top-3 z-[60] max-w-[min(88vw,320px)] transition-opacity duration-200 opacity-100")}>
+            {overlayTopRight}
+          </div>
+        )}
+        {overlayPersistentTopRight && (
+          <div className={cn("absolute left-3 top-3 z-[61] max-w-[min(88vw,320px)] transition-opacity duration-200 opacity-100")}>
+            {overlayPersistentTopRight}
+          </div>
+        )}
+        {overlayRightRail && (
+          <div className="absolute bottom-20 right-3 z-[55] hidden max-h-[65%] w-[min(35vw,360px)] overflow-hidden md:block">
+            {overlayRightRail}
+          </div>
+        )}
         {/* Intro Skip Overlay */}
         {showIntroSkip && (
           <button
@@ -456,14 +644,24 @@ export function AnimePlayer({
           </button>
         )}
         {/* Outro / Next Episode Overlay */}
-        {showOutroSkip && nextEpisodeHref && (
-          <Link
-            href={nextEpisodeHref}
-            className="absolute bottom-16 right-4 z-50 flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90"
+        {showOutroSkip && (nextEpisodeHref || onNextEpisode) && (
+          <button
+            type="button"
+            onClick={goNextEpisode}
+            className="group absolute bottom-16 right-4 z-50 overflow-hidden rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-all duration-300 hover:scale-[1.02] hover:opacity-95 animate-in fade-in slide-in-from-bottom-2"
             aria-label="Sonraki bölüme geç"
           >
-            Sonraki Bölüm <SkipForward className="h-4 w-4" />
-          </Link>
+            <span
+              className="absolute inset-x-0 bottom-0 h-1 origin-left bg-white/35 transition-transform duration-1000 ease-linear"
+              style={outroBarStyle}
+            />
+            <span className="relative z-10 flex items-center gap-2">
+              <span className="flex items-center gap-1.5">
+                Sonraki Bölüm
+                <SkipForward className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </span>
+          </button>
         )}
         <MobileSeekOverlay playerRef={playerRef} />
         <GestureHint />

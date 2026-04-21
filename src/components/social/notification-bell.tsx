@@ -126,7 +126,7 @@ export function NotificationBell() {
     setUnread((count) => Math.max(0, count - 1));
 
     if (action === "accept" && data.room?.id) {
-      window.location.href = `/oda/${data.room.id}?code=${encodeURIComponent(data.room.code ?? "")}`;
+      window.location.assign(`/oda/${data.room.id}?code=${encodeURIComponent(data.room.code ?? "")}`);
     }
   }
 
@@ -158,7 +158,7 @@ export function NotificationBell() {
     setItems((list) => list.map((i) => (i.id === n.id ? { ...i, readAt: new Date().toISOString() } : i)));
     setUnread((c) => Math.max(0, c - 1));
     if (action === "accept" && data.room?.inviteUrl) {
-      window.location.href = data.room.inviteUrl;
+      window.location.assign(data.room.inviteUrl);
     }
   }
 

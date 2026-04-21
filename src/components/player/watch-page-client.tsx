@@ -289,24 +289,38 @@ export function WatchPageClient({ details, episodeId }: Props) {
               </p>
             )}
 
-            {/* Mobile prev/next buttons — static, below description */}
-            {(prevEp || nextEp) && (
-              <div className="mt-4 flex items-center gap-2 sm:hidden">
-                {prevEp && (
-                  <Link
-                    href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(prevEp.ep.ID)}`}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] py-2.5 text-xs font-medium min-h-[44px]"
-                  >
-                    <SkipBack className="h-3.5 w-3.5" /> Önceki Bölüm
-                  </Link>
+            {/* Mobile episode actions */}
+            {(prevEp || nextEp || currentEp) && (
+              <div className="mt-4 flex flex-col gap-3 sm:hidden">
+                {currentEp && (
+                  <WatchTogetherButton
+                    animeId={details.ID}
+                    animeName={details.name}
+                    episodeId={currentEp.ID}
+                    episodeName={currentEp.name}
+                    poster={details.poster ?? details.details_banner ?? null}
+                    className="w-full justify-center"
+                  />
                 )}
-                {nextEp && (
-                  <Link
-                    href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] py-2.5 text-xs font-medium min-h-[44px]"
-                  >
-                    Sonraki Bölüm <SkipForward className="h-3.5 w-3.5" />
-                  </Link>
+                {(prevEp || nextEp) && (
+                  <div className="flex items-center gap-2">
+                    {prevEp && (
+                      <Link
+                        href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(prevEp.ep.ID)}`}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] py-2.5 text-xs font-medium min-h-[44px]"
+                      >
+                        <SkipBack className="h-3.5 w-3.5" /> Önceki Bölüm
+                      </Link>
+                    )}
+                    {nextEp && (
+                      <Link
+                        href={`/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] py-2.5 text-xs font-medium min-h-[44px]"
+                      >
+                        Sonraki Bölüm <SkipForward className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
+                  </div>
                 )}
               </div>
             )}

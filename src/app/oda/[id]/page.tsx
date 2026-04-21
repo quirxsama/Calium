@@ -34,7 +34,14 @@ export default async function RoomPage({
 
   const normalizedQueryCode = code?.trim().toUpperCase();
   const urlAllowed = normalizedQueryCode && normalizedQueryCode === room.code;
+  const hasPendingInvite = await prisma.roomInvite.findFirst({
+    where: { roomId: id, inviteeId: user.id, status: "pending" },
+    select: { id: true },
+  });
   if (acc.access === "forbidden" && !urlAllowed) {
+    redirect("/arkadaslar");
+  }
+  if (acc.access === "banned" || (acc.access === "forbidden" && urlAllowed && !hasPendingInvite && !room.isPublic)) {
     redirect("/arkadaslar");
   }
 

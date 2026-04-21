@@ -27,17 +27,36 @@ export async function POST(
   } catch {}
 
   const acc = await getRoomAccess(session.sub, id);
+  const pendingInvite = await prisma.roomInvite.findFirst({
+    where: { roomId: id, inviteeId: session.sub, status: "pending" },
+    select: { id: true },
+  });
   if (acc.access === "not_found") {
     return NextResponse.json({ success: false, error: "Oda bulunamadı." }, { status: 404 });
   }
   if (acc.access === "ended") {
     return NextResponse.json({ success: false, error: "Oda kapandı." }, { status: 410 });
   }
-  if (acc.access === "banned") {
-    return NextResponse.json({ success: false, error: "Erişim yok." }, { status: 403 });
+
+  const roomState = await prisma.room.findUnique({
+    where: { id },
+    select: { hostId: true, hostLeftAt: true, endedAt: true },
+  });
+  if (!roomState || roomState.endedAt) {
+    return NextResponse.json({ success: false, error: "Oda kapandı." }, { status: 410 });
+  }
+  if (roomState.hostLeftAt && roomState.hostId !== session.sub) {
+    const elapsed = Date.now() - roomState.hostLeftAt.getTime();
+    if (elapsed >= 60_000) {
+      await prisma.room.update({ where: { id }, data: { endedAt: new Date() } });
+      return NextResponse.json({ success: false, error: "Oda kapandı." }, { status: 410 });
+    }
+  }
+  if (acc.access === "banned" && !pendingInvite) {
+    return NextResponse.json({ success: false, error: "Tekrar katılmak için host izni gerekli." }, { status: 403 });
   }
 
-  if (acc.access === "invited") {
+  if (acc.access === "invited" || (acc.access === "banned" && pendingInvite)) {
     // Daveti kabul et
     await prisma.roomInvite.updateMany({
       where: { roomId: id, inviteeId: session.sub, status: "pending" },

@@ -4,6 +4,26 @@ import { requireUser } from "@/lib/auth/require-user";
 import { updateProfileSchema } from "@/lib/auth/validation";
 import { checkImageNsfw } from "@/lib/moderation";
 
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
+
+async function readAvatarInput(value: unknown): Promise<string | null | undefined> {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+
+  if (value.startsWith("data:image/")) {
+    const match = value.match(/^data:image\/[^;]+;base64,(.+)$/);
+    if (!match) return undefined;
+    const byteLength = Buffer.from(match[1], "base64").byteLength;
+    if (byteLength > MAX_AVATAR_SIZE) {
+      throw new Error("Avatar boyutu en fazla 5MB olabilir.");
+    }
+    return value;
+  }
+
+  return value;
+}
+
 export async function PATCH(req: NextRequest) {
   const { user, error } = await requireUser();
   if (error) return error;
@@ -24,9 +44,15 @@ export async function PATCH(req: NextRequest) {
   if (parsed.data.displayName !== undefined) data.displayName = parsed.data.displayName || null;
   if (parsed.data.bio !== undefined) data.bio = parsed.data.bio || null;
   if (parsed.data.avatarUrl !== undefined) {
-    const url = parsed.data.avatarUrl || null;
+    let url: string | null | undefined;
+    try {
+      url = await readAvatarInput(parsed.data.avatarUrl);
+    } catch (err) {
+      return NextResponse.json({ success: false, error: err instanceof Error ? err.message : "Avatar doğrulanamadı." }, { status: 400 });
+    }
+
     if (url) {
-      const moderation = await checkImageNsfw(url);
+      const moderation = url.startsWith("data:image/") ? { safe: true as const } : await checkImageNsfw(url);
       if (!moderation.safe) {
         return NextResponse.json(
           { success: false, error: moderation.reason ?? "Bu görsel uygunsuz içerik barındırıyor." },

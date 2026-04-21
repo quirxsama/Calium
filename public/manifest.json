@@ -1,7 +1,7 @@
 {
-  "name": "Calium — Anime İzleme Platformu",
+  "name": "Calium — Anime İzleme Platformu v0.6",
   "short_name": "Calium",
-  "description": "Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
+  "description": "Calium v0.6: Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0c",

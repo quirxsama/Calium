@@ -49,7 +49,7 @@ export async function PATCH(
   }
   const room = await prisma.room.findUnique({
     where: { id },
-    select: { id: true, hostId: true, endedAt: true },
+    select: { id: true, hostId: true, endedAt: true, hostLeftAt: true },
   });
   if (!room || room.endedAt) {
     return NextResponse.json({ success: false, error: "Oda bulunamadı." }, { status: 404 });
@@ -80,6 +80,7 @@ export async function PATCH(
 
   // Oda üyelerine bölüm değişikliği bildir
   if (parsed.data.episodeId) {
+    const sentAt = Date.now();
     const members = await prisma.roomMember.findMany({
       where: { roomId: id, banned: false },
       select: { userId: true },
@@ -91,6 +92,7 @@ export async function PATCH(
         roomId: id,
         episodeId: updated.episodeId,
         episodeName: updated.episodeName,
+        sentAt,
       }
     );
   }
@@ -123,7 +125,7 @@ export async function DELETE(
   }
   await prisma.room.update({
     where: { id },
-    data: { endedAt: new Date() },
+    data: { endedAt: new Date(), hostLeftAt: null },
   });
 
   const members = await prisma.roomMember.findMany({

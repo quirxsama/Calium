@@ -315,8 +315,8 @@ export default function FriendsPage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {visibleItems.map((u) => {
+          <div className="grid gap-2 sm:grid-cols-2">
+            {visibleItems.map((u) => {
             const initials = (u.displayName || u.username).slice(0, 2).toUpperCase();
             const p = presence.get(u.id);
             const status = p?.status ?? "offline";
@@ -324,27 +324,29 @@ export default function FriendsPage() {
             return (
               <div
                 key={u.id}
-                className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 transition hover:border-[var(--primary)]/40"
+                className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 transition hover:border-[var(--primary)]/40 sm:flex-row sm:items-center"
               >
                 <Link
                   href={`/profil/${u.username}`}
-                  className="flex min-w-0 flex-1 items-center gap-3"
+                  className="flex min-w-0 w-full flex-1 items-center gap-3"
                 >
-                  <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--muted)]">
-                    {u.avatarUrl ? (
-                      <Image
-                        src={u.avatarUrl}
-                        alt={u.username}
-                        width={48}
-                        height={48}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-sm font-bold text-[var(--muted-foreground)]">{initials}</span>
-                    )}
+                  <div className="relative h-12 w-12 shrink-0 overflow-visible">
+                    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[var(--muted)]">
+                      {u.avatarUrl ? (
+                        <Image
+                          src={u.avatarUrl}
+                          alt={u.username}
+                          width={48}
+                          height={48}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-bold text-[var(--muted-foreground)]">{initials}</span>
+                      )}
+                    </div>
                     <PresenceDot
                       status={status}
-                      className="absolute -bottom-0.5 -right-0.5"
+                      className="absolute -bottom-1 -right-1 z-10"
                     />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -361,7 +363,7 @@ export default function FriendsPage() {
                     </p>
                   </div>
                 </Link>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
                   {p?.activity?.roomId && (
                     <button
                       type="button"

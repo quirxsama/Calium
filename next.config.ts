@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
+  allowedDevOrigins: ['192.168.1.108'],
+
 };
 
 export default nextConfig;

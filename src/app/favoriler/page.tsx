@@ -20,7 +20,7 @@ export default function FavorilerPage() {
       <header className="mb-6">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight">Favorilerim</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Tarayıcınızda saklanır.
+          Favori animelerinizi buradan görüntüleyebilirsiniz.
         </p>
       </header>
       {items.length === 0 ? (

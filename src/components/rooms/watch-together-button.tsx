@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Users2, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth/context";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 type Props = {
   animeId: string;
@@ -62,10 +63,10 @@ export function WatchTogetherButton({
       type="button"
       onClick={createRoom}
       disabled={loading}
-      className={
-        className ??
-        "inline-flex items-center gap-1.5 rounded-full border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-medium text-[var(--primary)] hover:bg-[var(--primary)]/15 disabled:opacity-60"
-      }
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-3 py-1.5 text-xs font-medium text-[var(--primary)] hover:bg-[var(--primary)]/15 disabled:opacity-60 min-h-[44px]",
+        className
+      )}
     >
       {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users2 className="h-3.5 w-3.5" />}
       Arkadaşlarla İzle

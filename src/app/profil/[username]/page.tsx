@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { User, Calendar, List, Heart, Lock, Loader2, Users } from "lucide-react";
+import { User, Calendar, List, Heart, Lock, Loader2, Users, Settings2 } from "lucide-react";
 import { FollowButton, type FollowStatus } from "@/components/social/follow-button";
 import { usePresenceSubscribe } from "@/lib/realtime/presence";
 import { PresenceDot, activityText } from "@/components/social/presence-dot";
@@ -115,19 +115,21 @@ export default function ProfilePage() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
       {/* Profile Header */}
       <div className="mb-8 flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6">
-        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-2 border-[var(--border)] bg-[var(--card)] shadow-lg">
-          {profile.avatarUrl ? (
-            <Image
-              src={profile.avatarUrl}
-              alt={profile.username}
-              width={96}
-              height={96}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <span className="text-2xl font-bold text-[var(--muted-foreground)]">{initials}</span>
-          )}
-          <PresenceDot status={status} className="absolute -bottom-1 -right-1 ring-4 ring-[var(--background)]" />
+        <div className="relative h-24 w-24 overflow-visible">
+          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-[var(--border)] bg-[var(--card)] shadow-lg">
+            {profile.avatarUrl ? (
+              <Image
+                src={profile.avatarUrl}
+                alt={profile.username}
+                width={96}
+                height={96}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-2xl font-bold text-[var(--muted-foreground)]">{initials}</span>
+            )}
+          </div>
+          <PresenceDot status={status} className="absolute -bottom-1 -right-1 z-10 ring-4 ring-[var(--background)]" />
         </div>
 
         <div className="flex-1 text-center sm:text-left">
@@ -146,14 +148,24 @@ export default function ProfilePage() {
                 </p>
               )}
             </div>
-            {!isOwner && (
-              <FollowButton
-                username={profile.username}
-                initialStatus={followStatus}
-                isPrivate={profile.isPrivate}
-                onChange={handleFollowChange}
-              />
-            )}
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+              {isOwner ? (
+                <Link
+                  href="/ayarlar?tab=profil"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+                >
+                  <Settings2 className="h-4 w-4" />
+                  Profili düzenle
+                </Link>
+              ) : (
+                <FollowButton
+                  username={profile.username}
+                  initialStatus={followStatus}
+                  isPrivate={profile.isPrivate}
+                  onChange={handleFollowChange}
+                />
+              )}
+            </div>
           </div>
 
           {profile.bio && (

@@ -26,7 +26,12 @@ type TabKey = (typeof TABS)[number]["key"];
 export default function SettingsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [tab, setTab] = useState<TabKey>("profil");
+  const [tab, setTab] = useState<TabKey>(() => {
+    if (typeof window === "undefined") return "profil";
+
+    const target = new URLSearchParams(window.location.search).get("tab");
+    return target === "hesap" || target === "profil" || target === "gorunum" || target === "altyazi" || target === "oynatici" || target === "veri" ? target : "profil";
+  });
 
   useEffect(() => {
     if (!loading && !user) {

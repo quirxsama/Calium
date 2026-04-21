@@ -45,16 +45,14 @@ export async function POST(req: NextRequest) {
   }
 
   const member = room.members[0];
-  if (member?.banned) {
-    return NextResponse.json({ success: false, error: "Bu odaya erişimin yok." }, { status: 403 });
-  }
+  const isBanned = Boolean(member?.banned);
 
   if (await isEitherBlocked(user!.id, room.hostId)) {
     return NextResponse.json({ success: false, error: "Bu odaya erişimin yok." }, { status: 403 });
   }
 
   // Zaten üye veya host ise doğrudan giriş
-  if (room.hostId === user!.id || member) {
+  if (room.hostId === user!.id || (member && !isBanned)) {
     return NextResponse.json({
       success: true,
       direct: true,
@@ -62,8 +60,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Public oda → doğrudan katıl
-  if (room.isPublic) {
+  // Public oda → banlı değilse doğrudan katıl
+  if (room.isPublic && !isBanned) {
     await prisma.roomMember.upsert({
       where: { roomId_userId: { roomId: room.id, userId: user!.id } },
       update: { leftAt: null, banned: false, role: "guest" },

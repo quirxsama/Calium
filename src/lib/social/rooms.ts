@@ -41,6 +41,7 @@ export type RoomSummary = {
   isPublic: boolean;
   createdAt: Date;
   lastActiveAt: Date;
+  hostLeftAt: Date | null;
 };
 
 export type RoomAccess =
@@ -71,10 +72,14 @@ export async function getRoomAccess(
   if (!room) return { access: "not_found", isHost: false, roomExists: false };
   if (room.endedAt) return { access: "ended", isHost: false, roomExists: true };
   const isHost = room.hostId === userId;
+  if (room.hostLeftAt && Date.now() - room.hostLeftAt.getTime() >= 60_000) {
+    await prisma.room.update({ where: { id: roomId }, data: { endedAt: new Date() } });
+    return { access: "ended", isHost: false, roomExists: true };
+  }
   const member = room.members[0];
   if (member?.banned) return { access: "banned", isHost: false, roomExists: true };
   if (isHost) return { access: "host", isHost: true, roomExists: true };
-  if (member) return { access: "member", isHost: false, roomExists: true };
+  if (member && member.leftAt == null) return { access: "member", isHost: false, roomExists: true };
   if (room.invites[0]) return { access: "invited", isHost: false, roomExists: true };
   if (room.isPublic) return { access: "public", isHost: false, roomExists: true };
   return { access: "forbidden", isHost: false, roomExists: true };
@@ -94,6 +99,7 @@ export async function getRoomSummary(roomId: string) {
       poster: true,
       isPublic: true,
       endedAt: true,
+      hostLeftAt: true,
       host: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
       members: {
         where: { banned: false, leftAt: null },

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
+import Image from "next/image";
 
 export type ChatLine = {
   id: string;
@@ -18,9 +19,10 @@ type Props = {
   lines: ChatLine[];
   onSend: (text: string) => void;
   currentUserId: string;
+  onSent?: () => void;
 };
 
-export function RoomChat({ lines, onSend, currentUserId }: Props) {
+export function RoomChat({ lines, onSend, currentUserId, onSent }: Props) {
   const [text, setText] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -34,6 +36,11 @@ export function RoomChat({ lines, onSend, currentUserId }: Props) {
     if (!t) return;
     onSend(t);
     setText("");
+    onSent?.();
+    const el = document.activeElement;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      el.blur();
+    }
   }
 
   return (
@@ -54,19 +61,35 @@ export function RoomChat({ lines, onSend, currentUserId }: Props) {
           const self = l.userId === currentUserId;
           return (
             <div key={l.id} className={self ? "flex justify-end" : "flex justify-start"}>
-              <div
-                className={
-                  self
-                    ? "max-w-[80%] rounded-2xl rounded-br-sm bg-[var(--primary)] px-3 py-1.5 text-sm text-[var(--primary-foreground)]"
-                    : "max-w-[80%] rounded-2xl rounded-bl-sm bg-[var(--muted)] px-3 py-1.5 text-sm"
-                }
-              >
+              <div className={self ? "animate-room-chat-float flex max-w-[88%] items-end gap-2" : "animate-room-chat-float flex max-w-[88%] items-end gap-2"}>
                 {!self && (
-                  <p className="text-[11px] font-semibold text-[var(--primary)]">
-                    {l.displayName || l.username}
-                  </p>
+                  <ChatAvatar
+                    avatarUrl={l.avatarUrl ?? null}
+                    name={l.displayName || l.username}
+                    username={l.username}
+                  />
                 )}
-                <p className="whitespace-pre-wrap break-words">{l.text}</p>
+                <div
+                  className={
+                    self
+                      ? "max-w-full rounded-2xl rounded-br-sm bg-[var(--primary)] px-3 py-1.5 text-sm text-[var(--primary-foreground)] shadow-sm"
+                      : "max-w-full rounded-2xl rounded-bl-sm bg-[var(--muted)] px-3 py-1.5 text-sm shadow-sm"
+                  }
+                >
+                  {!self && (
+                    <p className="text-[11px] font-semibold text-[var(--primary)]">
+                      {l.displayName || l.username}
+                    </p>
+                  )}
+                  <p className="whitespace-pre-wrap break-words">{l.text}</p>
+                </div>
+                {self && (
+                  <ChatAvatar
+                    avatarUrl={l.avatarUrl ?? null}
+                    name={l.displayName || l.username}
+                    username={l.username}
+                  />
+                )}
               </div>
             </div>
           );
@@ -90,6 +113,20 @@ export function RoomChat({ lines, onSend, currentUserId }: Props) {
           <Send className="h-4 w-4" />
         </button>
       </form>
+    </div>
+  );
+}
+
+function ChatAvatar({ avatarUrl, name, username }: { avatarUrl: string | null; name: string; username: string }) {
+  return (
+    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-white/10 bg-[var(--muted)] shadow-sm">
+      {avatarUrl ? (
+        <Image src={avatarUrl} alt={username} width={32} height={32} className="h-full w-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center text-[10px] font-bold text-[var(--muted-foreground)]">
+          {name.slice(0, 2).toUpperCase()}
+        </span>
+      )}
     </div>
   );
 }

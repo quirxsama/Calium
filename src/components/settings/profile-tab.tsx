@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuth } from "@/lib/auth/context";
-import { Loader2, Save, Eye, EyeOff } from "lucide-react";
+import { Loader2, Save, Eye, EyeOff, Upload } from "lucide-react";
 
 export function ProfileTab() {
   const { user, updateUser } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [bio, setBio] = useState(user?.bio ?? "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? "");
@@ -13,6 +14,24 @@ export function ProfileTab() {
   const [listsPublic, setListsPublic] = useState(user?.listsPublic ?? true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  async function handleAvatarFile(file: File | null) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: "error", text: "Avatar boyutu en fazla 5MB olabilir." });
+      return;
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error("Dosya okunamadı."));
+      reader.readAsDataURL(file);
+    });
+
+    setAvatarUrl(dataUrl);
+    setMessage(null);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,13 +91,34 @@ export function ProfileTab() {
         </Field>
 
         <Field label="Avatar URL" htmlFor="avatarUrl">
-          <input
-            id="avatarUrl"
-            value={avatarUrl}
-            onChange={(e) => setAvatarUrl(e.target.value)}
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm outline-none transition focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/30"
-            placeholder="https://example.com/avatar.jpg"
-          />
+          <div className="space-y-2">
+            <input
+              id="avatarUrl"
+              value={avatarUrl}
+              onChange={(e) => setAvatarUrl(e.target.value)}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm outline-none transition focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/30"
+              placeholder="https://example.com/avatar.jpg"
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                void handleAvatarFile(e.target.files?.[0] ?? null);
+                e.currentTarget.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+            >
+              <Upload className="h-4 w-4" />
+              Cihazdan yükle
+            </button>
+            <p className="text-xs text-[var(--muted-foreground)]">Maksimum 5MB. Yüklenen görsel, profil avatarı olarak kaydedilir.</p>
+          </div>
         </Field>
 
         <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">

@@ -128,11 +128,11 @@ export function InviteToast() {
   if (!user || user.dndEnabled || active.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed bottom-24 right-4 z-[70] flex flex-col gap-2 md:bottom-4">
+    <div className="pointer-events-none fixed bottom-24 right-4 z-[999] flex flex-col gap-2 md:bottom-4">
       {active.map((it) => (
         <div
           key={it.id}
-          className="pointer-events-auto w-[320px] overflow-hidden rounded-xl border border-[var(--primary)]/40 bg-[var(--card)] shadow-xl"
+          className="pointer-events-auto animate-room-chat-float w-[320px] overflow-hidden rounded-xl border border-[var(--primary)]/40 bg-[var(--card)] shadow-xl"
         >
           <div className="flex items-start gap-3 p-3">
             <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--primary)]/15 text-[var(--primary)]">

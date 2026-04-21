@@ -47,17 +47,24 @@ async function authorizeRoomJoin(userId, roomId) {
         hostId: true,
         isPublic: true,
         endedAt: true,
-        members: { select: { userId: true, banned: true } },
+        members: { select: { userId: true, banned: true, leftAt: true } },
       },
     });
     if (!room || room.endedAt) return { ok: false, reason: "Oda bulunamadı" };
     const isHost = room.hostId === userId;
     if (isHost) return { ok: true, isHost: true };
     const member = room.members.find((m) => m.userId === userId);
-    if (member?.banned) return { ok: false, reason: "Odadan çıkarıldın" };
+    if (member?.banned) {
+      const invite = await prisma.roomInvite.findFirst({
+        where: { roomId, inviteeId: userId, status: "pending" },
+      });
+      if (!invite) return { ok: false, reason: "Odadan çıkarıldın" };
+      return { ok: true, isHost: false };
+    }
+    if (member && !member.leftAt) return { ok: true, isHost: false };
     if (room.isPublic) return { ok: true, isHost: false };
     // Private (default): davet veya üyelik gerekli
-    if (!member) {
+    if (!member || member.leftAt) {
       // Açık davetiyesi var mı?
       const invite = await prisma.roomInvite.findFirst({
         where: { roomId, inviteeId: userId, status: "pending" },
@@ -218,7 +225,7 @@ const heartbeat = setInterval(() => {
 wss.on("close", () => clearInterval(heartbeat));
 
 server.listen(port, () => {
-  console.log(`> Calium ready on http://${hostname}:${port} (ws://.../ws)`);
+  console.log(`> Calium v0.6 ready on http://${hostname}:${port} (ws://.../ws)`);
 });
 
 // Graceful shutdown

@@ -41,12 +41,12 @@ export async function POST(
 
   await prisma.roomMember.upsert({
     where: { roomId_userId: { roomId: id, userId: parsed.data.userId } },
-    update: { banned: !!parsed.data.ban, leftAt: new Date() },
+    update: { banned: true, leftAt: new Date() },
     create: {
       roomId: id,
       userId: parsed.data.userId,
       role: "guest",
-      banned: !!parsed.data.ban,
+      banned: true,
       leftAt: new Date(),
     },
   });
@@ -54,7 +54,7 @@ export async function POST(
   pushToUser(parsed.data.userId, {
     t: "room.kicked",
     roomId: id,
-    banned: !!parsed.data.ban,
+    banned: true,
   });
 
   return NextResponse.json({ success: true });

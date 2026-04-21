@@ -10,8 +10,15 @@ export type ChatMsg = {
 };
 
 export type PlaybackEvent = {
-  action: "play" | "pause" | "seek" | "rate" | "sync";
-  data?: { time?: number; rate?: number; paused?: boolean; sentAt?: number };
+  action: "play" | "pause" | "seek" | "rate" | "sync" | "episode-change";
+  data?: {
+    time?: number;
+    rate?: number;
+    paused?: boolean;
+    sentAt?: number;
+    episodeId?: string;
+    episodeName?: string | null;
+  };
   from?: string;
 };
 
@@ -24,7 +31,7 @@ type Handlers = {
   onChat?: (m: ChatMsg) => void;
   onMember?: (m: RoomMemberEvent) => void;
   onPlayback?: (e: PlaybackEvent) => void;
-  onUpdate?: (u: { episodeId: string; episodeName: string | null }) => void;
+  onUpdate?: (u: { episodeId: string; episodeName: string | null; sentAt?: number }) => void;
   onKicked?: (p: { banned: boolean }) => void;
   onClosed?: () => void;
 };
@@ -75,6 +82,7 @@ export function useRoomSocket(roomId: string | null, handlers: Handlers) {
           h.onUpdate?.({
             episodeId: String(msg.episodeId),
             episodeName: (msg.episodeName as string | null) ?? null,
+            sentAt: typeof msg.sentAt === "number" ? msg.sentAt : undefined,
           });
           return;
         case "room.kicked":

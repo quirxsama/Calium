@@ -16,6 +16,7 @@ export const updateRoomSchema = z.object({
 });
 
 export const inviteSchema = z.object({
+  friendId: z.string().min(1).max(64).optional(),
   username: z.string().min(2).max(32).optional(),
 });
 

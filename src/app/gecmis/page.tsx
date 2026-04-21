@@ -28,7 +28,7 @@ export default function GecmisPage() {
         <div>
           <h1 className="text-3xl md:text-4xl font-black tracking-tight">İzleme Geçmişi</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Tarayıcınızda tutulur.
+            İzleme geçmişinizi burada görebilirsiniz.
           </p>
         </div>
         {history.length > 0 && (

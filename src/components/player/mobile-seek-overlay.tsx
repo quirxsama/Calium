@@ -22,6 +22,7 @@ export function MobileSeekOverlay({ playerRef }: Props) {
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ripple, setRipple] = useState<RippleState | null>(null);
   const keyRef = useRef(0);
+  const suppressNativeDoubleTapRef = useRef(false);
 
   const handleSeek = useCallback(
     (side: "left" | "right") => {
@@ -80,15 +81,41 @@ export function MobileSeekOverlay({ playerRef }: Props) {
       if (last && last.side === side && now - last.time < DOUBLE_TAP_MS) {
         // Double tap — seek
         lastTapRef.current = null;
+        suppressNativeDoubleTapRef.current = true;
         handleSeek(side);
+
+        window.setTimeout(() => {
+          suppressNativeDoubleTapRef.current = false;
+        }, DOUBLE_TAP_MS);
       } else {
         // First tap — just record; let Vidstack handle it natively
         lastTapRef.current = { time: now, side };
       }
     };
 
+    const onDoubleClick = (e: MouseEvent) => {
+      if (!suppressNativeDoubleTapRef.current) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          'button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a, .vds-controls, .vds-menu'
+        )
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
     el.addEventListener("touchend", onTouch, { passive: true });
-    return () => el.removeEventListener("touchend", onTouch);
+    el.addEventListener("dblclick", onDoubleClick, true);
+
+    return () => {
+      el.removeEventListener("touchend", onTouch);
+      el.removeEventListener("dblclick", onDoubleClick, true);
+    };
   }, [playerRef, handleSeek]);
 
   return (

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { inviteSchema } from "@/lib/social/room-schemas";
-import { isEitherBlocked } from "@/lib/social/friends";
+import { getFriendIds, isEitherBlocked } from "@/lib/social/friends";
 import { createNotification } from "@/lib/social/notifications";
 import { normalizeRoomCode } from "@/lib/social/rooms";
 
@@ -51,7 +51,7 @@ export async function POST(
 
   const inviteUrl = `/oda/${id}?code=${encodeURIComponent(normalizeRoomCode(room.code))}`;
 
-  if (!parsed.data.username) {
+  if (!parsed.data.username && !parsed.data.friendId) {
     return NextResponse.json({
       success: true,
       invite: {
@@ -62,8 +62,10 @@ export async function POST(
     });
   }
 
-  const invitee = await prisma.user.findUnique({
-    where: { username: parsed.data.username },
+  const invitee = await prisma.user.findFirst({
+    where: parsed.data.friendId
+      ? { id: parsed.data.friendId }
+      : { username: parsed.data.username },
     select: { id: true, username: true, dndEnabled: true },
   });
   if (!invitee) {
@@ -74,6 +76,13 @@ export async function POST(
   }
   if (await isEitherBlocked(session.sub, invitee.id)) {
     return NextResponse.json({ success: false, error: "Bu kullanıcıyı davet edemezsin." }, { status: 403 });
+  }
+
+  if (parsed.data.friendId) {
+    const friendIds = await getFriendIds(session.sub);
+    if (!friendIds.includes(invitee.id)) {
+      return NextResponse.json({ success: false, error: "Sadece arkadaşlarını davet edebilirsin." }, { status: 403 });
+    }
   }
 
   // Upsert: mevcut bekleyen daveti yenile

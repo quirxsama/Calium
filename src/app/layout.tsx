@@ -38,9 +38,9 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Calium — Ücretsiz Anime İzleme Platformu",
+  title: "Calium v0.6 — Ücretsiz Anime İzleme Platformu",
   description:
-    "Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
+    "Calium v0.6: Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
   keywords: ["anime", "anime izle", "türkçe altyazılı anime", "türkçe dublaj anime", "calium"],
   manifest: "/manifest.json",
   appleWebApp: {
@@ -64,6 +64,10 @@ export const viewport: Viewport = {
     { media: "(prefers-color-scheme: light)", color: "#f7f7f8" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0c" },
   ],
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 
