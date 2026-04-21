@@ -38,9 +38,9 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Calium v0.6 — Ücretsiz Anime İzleme Platformu",
+  title: "Calium — Ücretsiz Anime İzleme Platformu",
   description:
-    "Calium v0.6: Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
+    "Calium: Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
   keywords: ["anime", "anime izle", "türkçe altyazılı anime", "türkçe dublaj anime", "calium"],
   manifest: "/manifest.json",
   appleWebApp: {

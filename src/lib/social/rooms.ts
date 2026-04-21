@@ -62,7 +62,7 @@ export async function getRoomAccess(
   const room = await prisma.room.findUnique({
     where: { id: roomId },
     include: {
-      members: { where: { userId }, select: { userId: true, banned: true, role: true } },
+      members: { where: { userId }, select: { userId: true, banned: true, role: true, leftAt: true } },
       invites: {
         where: { inviteeId: userId, status: "pending" },
         select: { id: true },

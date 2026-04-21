@@ -26,7 +26,18 @@ export default async function RoomPage({
 
   const room = await prisma.room.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      code: true,
+      hostId: true,
+      animeId: true,
+      animeName: true,
+      episodeId: true,
+      episodeName: true,
+      poster: true,
+      isPublic: true,
+      endedAt: true,
+      hostLeftAt: true,
       host: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
     },
   });
@@ -41,7 +52,7 @@ export default async function RoomPage({
   if (acc.access === "forbidden" && !urlAllowed) {
     redirect("/arkadaslar");
   }
-  if (acc.access === "banned" || (acc.access === "forbidden" && urlAllowed && !hasPendingInvite && !room.isPublic)) {
+  if (acc.access === "forbidden" && urlAllowed && !hasPendingInvite && !room.isPublic) {
     redirect("/arkadaslar");
   }
 
@@ -58,6 +69,7 @@ export default async function RoomPage({
         poster: room.poster,
         isPublic: room.isPublic,
         endedAt: room.endedAt ? room.endedAt.toISOString() : null,
+        hostLeftAt: room.hostLeftAt ? room.hostLeftAt.toISOString() : null,
         host: room.host,
       }}
       initialAccess={acc.access}
