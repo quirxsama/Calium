@@ -214,15 +214,6 @@ body {
   animation: fadeInUp 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Seek touch zones — only interactive on touch devices */
-.seek-touch-zone {
-  pointer-events: none;
-}
-@media (pointer: coarse) {
-  .seek-touch-zone {
-    pointer-events: auto;
-  }
-}
 
 /* ============ Mobile player seek ripple ============ */
 

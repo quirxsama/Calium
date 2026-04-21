@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaPlayerInstance } from "@vidstack/react";
 import { cn } from "@/lib/utils";
 
@@ -18,21 +18,10 @@ type Props = {
 
 export function MobileSeekOverlay({ playerRef }: Props) {
   const lastTapRef = useRef<{ time: number; side: "left" | "right" } | null>(null);
-  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accumulatedRef = useRef(0);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ripple, setRipple] = useState<RippleState | null>(null);
   const keyRef = useRef(0);
-
-  const toggleControls = useCallback(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    if (p.controls.showing) {
-      p.controls.hide();
-    } else {
-      p.controls.show();
-    }
-  }, [playerRef]);
 
   const handleSeek = useCallback(
     (side: "left" | "right") => {
@@ -56,51 +45,54 @@ export function MobileSeekOverlay({ playerRef }: Props) {
     [playerRef]
   );
 
-  const onTouchEnd = useCallback(
-    (side: "left" | "right") => {
+  // Attach touch listener directly on the player element so Vidstack
+  // continues to receive all single-tap events (play/pause, show controls).
+  // We only intercept double-taps for seeking.
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    const el = p.el;
+    if (!el) return;
+
+    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    if (!isTouch) return;
+
+    const onTouch = (e: TouchEvent) => {
+      // Don't intercept taps on interactive controls
+      const target = e.target as HTMLElement;
+      if (
+        target?.closest(
+          'button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a, .vds-controls, .vds-menu'
+        )
+      ) {
+        return;
+      }
+
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const rect = el.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const side: "left" | "right" = x < rect.width / 2 ? "left" : "right";
+
       const now = Date.now();
       const last = lastTapRef.current;
 
       if (last && last.side === side && now - last.time < DOUBLE_TAP_MS) {
-        // Double tap — cancel pending single-tap toggle and seek
+        // Double tap — seek
         lastTapRef.current = null;
-        if (singleTapTimerRef.current) {
-          clearTimeout(singleTapTimerRef.current);
-          singleTapTimerRef.current = null;
-        }
         handleSeek(side);
       } else {
-        // First tap — schedule controls toggle; will be cancelled if double-tap follows
+        // First tap — just record; let Vidstack handle it natively
         lastTapRef.current = { time: now, side };
-        if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
-        singleTapTimerRef.current = setTimeout(() => {
-          singleTapTimerRef.current = null;
-          toggleControls();
-        }, DOUBLE_TAP_MS);
       }
-    },
-    [handleSeek, toggleControls]
-  );
+    };
+
+    el.addEventListener("touchend", onTouch, { passive: true });
+    return () => el.removeEventListener("touchend", onTouch);
+  }, [playerRef, handleSeek]);
 
   return (
     <div className="absolute inset-0 z-20 flex pointer-events-none">
-      {/* Left zone — rewind (touch devices only) */}
-      <div
-        className="h-full w-1/2 seek-touch-zone"
-        onTouchEnd={(e) => {
-          e.stopPropagation();
-          onTouchEnd("left");
-        }}
-      />
-      {/* Right zone — forward (touch devices only) */}
-      <div
-        className="h-full w-1/2 seek-touch-zone"
-        onTouchEnd={(e) => {
-          e.stopPropagation();
-          onTouchEnd("right");
-        }}
-      />
-
       {/* Ripple animation overlay */}
       {ripple && (
         <div
@@ -114,13 +106,9 @@ export function MobileSeekOverlay({ playerRef }: Props) {
           <div className="relative flex flex-col items-center gap-1 text-white seek-ripple-content">
             <div className="flex items-center gap-0.5">
               {ripple.side === "left" ? (
-                <>
-                  <SeekArrows direction="left" />
-                </>
+                <SeekArrows direction="left" />
               ) : (
-                <>
-                  <SeekArrows direction="right" />
-                </>
+                <SeekArrows direction="right" />
               )}
             </div>
             <span className="text-sm font-semibold">{ripple.seconds} saniye</span>
