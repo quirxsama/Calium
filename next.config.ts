@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.anizium.com" },
       { protocol: "https", hostname: "**.anizium.net" },
       { protocol: "https", hostname: "**.anizium.org" },
+      { protocol: "https", hostname: "image.tmdb.org" },
     ],
   },
   experimental: {

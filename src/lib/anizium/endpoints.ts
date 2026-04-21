@@ -5,10 +5,12 @@ import {
   AnimeDetailsResponseSchema,
   LatestEpisodeResponseSchema,
   SourceResponseSchema,
+  TMDBCreditsSchema,
   type ApiResponse,
   type AnimeDetailsResponse,
   type LatestEpisodeResponse,
   type SourceResponse,
+  type TMDBCredits,
 } from "./schemas";
 
 // ---- Listeleme endpoint'leri ----
@@ -138,4 +140,16 @@ export async function getSimilarAnimes(id: string): Promise<ApiResponse> {
     revalidate: CACHE_TTL.detail,
   });
   return ApiResponseSchema.parse(raw);
+}
+
+// ---- TMDB Cast / Oyuncular ----
+
+export async function getTMDBCredits(tmdbId: number): Promise<TMDBCredits> {
+  const apiKey = process.env.TMDB_API_KEY || "";
+  if (!apiKey) throw new Error("TMDB_API_KEY env değişkeni ayarlanmamış");
+  const url = `https://api.themoviedb.org/3/tv/${tmdbId}/credits?api_key=${apiKey}&language=en-US`;
+  const res = await fetch(url, { next: { revalidate: CACHE_TTL.tmdb } });
+  if (!res.ok) throw new Error(`TMDB HTTP ${res.status}`);
+  const raw = await res.json();
+  return TMDBCreditsSchema.parse(raw);
 }

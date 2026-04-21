@@ -33,6 +33,8 @@ export const GENRES: { id: string; name: string; slug: string }[] = [
   { id: "94032", name: "Shounen", slug: "shounen" },
 ];
 
+export const TMDB_API_KEY = process.env.TMDB_API_KEY || "";
+
 // Cache süreleri (saniye)
 export const CACHE_TTL = {
   domain: 300, // 5dk
@@ -41,4 +43,5 @@ export const CACHE_TTL = {
   top: 1800,
   detail: 3600, // 1sa
   search: 300,
+  tmdb: 7200, // 2sa
 };

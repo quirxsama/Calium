@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth/context";
-import { Loader2, Save, Eye, EyeOff, Upload } from "lucide-react";
+import { Loader2, Save, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 
 export function ProfileTab() {
   const { user, updateUser } = useAuth();
@@ -14,6 +15,95 @@ export function ProfileTab() {
   const [listsPublic, setListsPublic] = useState(user?.listsPublic ?? true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [avatarPresets, setAvatarPresets] = useState<{ ID: string; name: string; link: string | null }[]>([]);
+  const [loadingPresets, setLoadingPresets] = useState(false);
+  const [presetSource, setPresetSource] = useState<string | null>(null);
+  const presetsScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const [animeQuery, setAnimeQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ id: string; name: string; poster: string | null }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setLoadingPresets(true);
+    fetch("/api/avatar-presets")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.avatars)) {
+          setAvatarPresets(data.avatars);
+          setPresetSource(data.source ?? null);
+        }
+      })
+      .catch(() => setAvatarPresets([]))
+      .finally(() => setLoadingPresets(false));
+  }, []);
+
+  useEffect(() => {
+    const q = animeQuery.trim();
+    if (!q || q.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSearching(true);
+      fetch(`/api/anime/search?q=${encodeURIComponent(q)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.results)) {
+            setSearchResults(data.results);
+          }
+        })
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [animeQuery]);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
+        setSearchResults([]);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  async function selectAnimeForAvatars(id: string, name: string) {
+    setAnimeQuery("");
+    setSearchResults([]);
+    setPresetSource(name);
+    setLoadingPresets(true);
+    try {
+      const res = await fetch(`/api/avatar-presets?animeId=${encodeURIComponent(id)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.avatars)) {
+        setAvatarPresets(data.avatars);
+      }
+    } catch {
+      setAvatarPresets([]);
+    } finally {
+      setLoadingPresets(false);
+    }
+  }
+
+  function resetToPopular() {
+    setPresetSource(null);
+    setAnimeQuery("");
+    setSearchResults([]);
+    setLoadingPresets(true);
+    fetch("/api/avatar-presets")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.avatars)) {
+          setAvatarPresets(data.avatars);
+          setPresetSource(data.source ?? null);
+        }
+      })
+      .catch(() => setAvatarPresets([]))
+      .finally(() => setLoadingPresets(false));
+  }
 
   async function handleAvatarFile(file: File | null) {
     if (!file) return;
@@ -90,8 +180,17 @@ export function ProfileTab() {
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">{bio.length}/500</p>
         </Field>
 
-        <Field label="Avatar URL" htmlFor="avatarUrl">
-          <div className="space-y-2">
+        <Field label="Avatar" htmlFor="avatarUrl">
+          <div className="space-y-3">
+            {avatarUrl && (
+              <div className="flex items-center gap-3">
+                <div className="relative h-16 w-16 overflow-hidden rounded-full border border-[var(--border)]">
+                  <Image src={avatarUrl} alt="Avatar" fill sizes="64px" className="object-cover" />
+                </div>
+                <span className="text-xs text-[var(--muted-foreground)]">Mevcut avatar</span>
+              </div>
+            )}
+
             <input
               id="avatarUrl"
               value={avatarUrl}
@@ -99,6 +198,7 @@ export function ProfileTab() {
               className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm outline-none transition focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/30"
               placeholder="https://example.com/avatar.jpg"
             />
+
             <input
               ref={fileInputRef}
               type="file"
@@ -109,15 +209,157 @@ export function ProfileTab() {
                 e.currentTarget.value = "";
               }}
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
-            >
-              <Upload className="h-4 w-4" />
-              Cihazdan yükle
-            </button>
-            <p className="text-xs text-[var(--muted-foreground)]">Maksimum 5MB. Yüklenen görsel, profil avatarı olarak kaydedilir.</p>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+              >
+                <Upload className="h-4 w-4" />
+                Cihazdan yükle
+              </button>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarUrl("")}
+                  className="rounded-xl border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  Kaldır
+                </button>
+              )}
+            </div>
+
+            <div ref={searchWrapRef} className="relative">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                <input
+                  type="text"
+                  value={animeQuery}
+                  onChange={(e) => setAnimeQuery(e.target.value)}
+                  placeholder="Anime ara ve karakter avatarı seç…"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] py-2.5 pl-9 pr-9 text-sm outline-none transition focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/30"
+                />
+                {animeQuery && (
+                  <button
+                    type="button"
+                    onClick={() => { setAnimeQuery(""); setSearchResults([]); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {searching && (
+                <div className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 shadow-lg">
+                  <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Aranıyor…
+                  </div>
+                </div>
+              )}
+
+              {!searching && searchResults.length > 0 && (
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg">
+                  {searchResults.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => selectAnimeForAvatars(r.id, r.name)}
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-[var(--muted)]"
+                    >
+                      <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-[var(--muted)]">
+                        {r.poster ? (
+                          <Image src={r.poster} alt={r.name} fill sizes="40px" className="object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-[var(--muted-foreground)]">?</div>
+                        )}
+                      </div>
+                      <span className="text-sm text-[var(--foreground)]">{r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {loadingPresets && (
+              <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {presetSource ? `"${presetSource}" karakterleri yükleniyor…` : "Hazır avatarlar yükleniyor…"}
+              </div>
+            )}
+
+            {!loadingPresets && avatarPresets.length > 0 && (
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-medium text-[var(--foreground)]">
+                    {presetSource ? `"${presetSource}" karakterleri` : "Popüler avatarlar"}
+                  </p>
+                  {presetSource && (
+                    <button
+                      type="button"
+                      onClick={resetToPopular}
+                      className="text-[10px] text-[var(--primary)] transition hover:underline"
+                    >
+                      Popülerlere dön
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      presetsScrollRef.current?.scrollBy({ left: -128, behavior: "smooth" });
+                    }}
+                    className="hidden shrink-0 rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] md:inline-flex"
+                    aria-label="Önceki avatarlar"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  <div
+                    ref={presetsScrollRef}
+                    className="flex gap-2.5 overflow-x-auto pb-2"
+                  >
+                    {avatarPresets.map((preset) =>
+                      preset.link ? (
+                        <button
+                          key={preset.ID}
+                          type="button"
+                          onClick={() => setAvatarUrl(preset.link!)}
+                          title={preset.name}
+                          className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-2 transition ${
+                            avatarUrl === preset.link
+                              ? "border-[var(--primary)]"
+                              : "border-[var(--border)] hover:border-[var(--primary)]/50"
+                          }`}
+                        >
+                          <Image
+                            src={preset.link}
+                            alt={preset.name}
+                            fill
+                            sizes="64px"
+                            className="object-cover"
+                          />
+                        </button>
+                      ) : null
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      presetsScrollRef.current?.scrollBy({ left: 128, behavior: "smooth" });
+                    }}
+                    className="hidden shrink-0 rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] md:inline-flex"
+                    aria-label="Sonraki avatarlar"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </Field>
 

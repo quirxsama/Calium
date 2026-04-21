@@ -63,6 +63,20 @@ export const SeasonSchema = z.object({
   episodes: z.array(EpisodeDataSchema).default([]),
 });
 
+export const StudioSchema = z.object({
+  ID: z.union([z.string(), z.number()]).transform(String),
+  name: z.string(),
+  logo: z.string().optional().nullable(),
+});
+
+export const AvatarSchema = z.object({
+  ID: z.union([z.string(), z.number()]).transform(String),
+  name: z.string(),
+  link: z.string().optional().nullable(),
+  avatar_set: z.string().optional().nullable(),
+  who_use: z.string().optional().nullable(),
+});
+
 export const AnimeDetailsSchema = z.object({
   ID: z.union([z.string(), z.number()]).transform(String),
   type: z.string().optional().nullable(),
@@ -71,10 +85,16 @@ export const AnimeDetailsSchema = z.object({
   logo: z.string().optional().nullable(),
   poster: z.string().optional().nullable(),
   name: z.string(),
+  name_jp: z.string().optional().nullable(),
+  name_tr: z.string().optional().nullable(),
   overview: z.string().optional().nullable(),
   release_year: z.union([z.number(), z.string()]).optional().nullable(),
   genre: z.array(GenreSchema).optional().default([]),
   imdb_point: z.union([z.number(), z.string()]).optional().nullable(),
+  tmdb_id: z.union([z.number(), z.string()]).optional().nullable(),
+  youtube_video: z.string().optional().nullable(),
+  studios: z.array(StudioSchema).optional().default([]),
+  avatar: z.array(AvatarSchema).optional().default([]),
   seasons: z.array(SeasonSchema).optional().default([]),
 });
 
@@ -137,6 +157,18 @@ export const SourceResponseSchema = z.object({
   groups: z.array(SourceGroupSchema).optional().default([]),
 });
 
+export const TMDBCastSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  character: z.string(),
+  profile_path: z.string().nullable().optional(),
+  order: z.number().optional(),
+});
+
+export const TMDBCreditsSchema = z.object({
+  cast: z.array(TMDBCastSchema).default([]),
+});
+
 export type Genre = z.infer<typeof GenreSchema>;
 export type AnimeData = z.infer<typeof AnimeDataSchema>;
 export type ApiResponse = z.infer<typeof ApiResponseSchema>;
@@ -144,6 +176,8 @@ export type LatestEpisodeData = z.infer<typeof LatestEpisodeDataSchema>;
 export type LatestEpisodeResponse = z.infer<typeof LatestEpisodeResponseSchema>;
 export type EpisodeData = z.infer<typeof EpisodeDataSchema>;
 export type Season = z.infer<typeof SeasonSchema>;
+export type Studio = z.infer<typeof StudioSchema>;
+export type Avatar = z.infer<typeof AvatarSchema>;
 export type AnimeDetails = z.infer<typeof AnimeDetailsSchema>;
 export type AnimeDetailsResponse = z.infer<typeof AnimeDetailsResponseSchema>;
 export type SubtitleData = z.infer<typeof SubtitleDataSchema>;
@@ -151,3 +185,5 @@ export type SourceItem = z.infer<typeof SourceItemSchema>;
 export type SourceGroup = z.infer<typeof SourceGroupSchema>;
 export type SourceContent = z.infer<typeof SourceContentSchema>;
 export type SourceResponse = z.infer<typeof SourceResponseSchema>;
+export type TMDBCast = z.infer<typeof TMDBCastSchema>;
+export type TMDBCredits = z.infer<typeof TMDBCreditsSchema>;
