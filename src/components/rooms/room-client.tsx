@@ -61,6 +61,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const suppressEventRef = useRef(false); // remote event uygulanırken event spam'ini kes
@@ -513,6 +514,24 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     }
   }
 
+  async function toggleVisibility() {
+    if (!isHost || visibilityBusy) return;
+    setVisibilityBusy(true);
+    try {
+      const res = await fetch(`/api/rooms/${room.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublic: !room.isPublic }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRoom((r) => ({ ...r, isPublic: !r.isPublic }));
+      }
+    } finally {
+      setVisibilityBusy(false);
+    }
+  }
+
   async function leaveRoom() {
     if (isHost && !confirm("Host olarak ayrılırsan oda kapanır. Emin misin?")) return;
     await fetch(`/api/rooms/${room.id}/leave`, { method: "POST" });
@@ -556,10 +575,23 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
         >
           <ArrowLeft className="h-4 w-4" /> {room.animeName}
         </Link>
-        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs">
-          {room.isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-          {room.isPublic ? "Açık oda" : "Özel oda"}
-        </span>
+        {isHost ? (
+          <button
+            type="button"
+            onClick={() => void toggleVisibility()}
+            disabled={visibilityBusy}
+            aria-label={room.isPublic ? "Özel yap" : "Açık yap"}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs hover:bg-[var(--muted)] disabled:opacity-60"
+          >
+            {visibilityBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : room.isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+            {room.isPublic ? "Açık oda" : "Özel oda"}
+          </button>
+        ) : (
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs">
+            {room.isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+            {room.isPublic ? "Açık oda" : "Özel oda"}
+          </span>
+        )}
         <button
           type="button"
           onClick={() => void copyText(room.code, "code")}

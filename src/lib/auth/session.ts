@@ -28,6 +28,7 @@ export async function getCurrentUser() {
       listsPublic: true,
       isPrivate: true,
       dndEnabled: true,
+      allowOfflineInvites: true,
       createdAt: true,
     },
   });

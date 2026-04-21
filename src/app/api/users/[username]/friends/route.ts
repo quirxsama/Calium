@@ -32,7 +32,7 @@ export async function GET(
   const friendIds = await getFriendIds(target.id);
   const items = await prisma.user.findMany({
     where: { id: { in: friendIds } },
-    select: { id: true, username: true, displayName: true, avatarUrl: true, isPrivate: true },
+    select: { id: true, username: true, displayName: true, avatarUrl: true, isPrivate: true, allowOfflineInvites: true },
     orderBy: { username: "asc" },
   });
 

@@ -12,7 +12,11 @@ export type NotificationType =
   | "follow_accepted"
   | "invite"
   | "room_join"
-  | "room_request";
+  | "room_request"
+  | "room_join_request"
+  | "room_join_accepted"
+  | "offline_invite"
+  | "offline_invite_accepted";
 
 export type NotificationPayload = Record<string, unknown>;
 

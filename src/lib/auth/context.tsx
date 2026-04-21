@@ -14,6 +14,7 @@ export interface AuthUser {
   listsPublic: boolean;
   isPrivate?: boolean;
   dndEnabled?: boolean;
+  allowOfflineInvites?: boolean;
 }
 
 interface AuthContextValue {

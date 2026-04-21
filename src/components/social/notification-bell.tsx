@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, Check, Inbox, X } from "lucide-react";
+import { Bell, Check, Inbox, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth/context";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +33,10 @@ const TYPE_LABEL: Record<string, (p: NotifItem["payload"]) => string> = {
   invite: (p) => `${p.displayName || p.username} seni birlikte izlemeye davet etti`,
   room_join: (p) => `${p.displayName || p.username} bir oda açtı`,
   room_request: (p) => `${p.displayName || p.username} birlikte izlemeye çağırıyor`,
+  room_join_request: (p) => `${p.displayName || p.username} odanıza katılmak istiyor`,
+  room_join_accepted: (p) => `${p.displayName || p.username} katılma isteğinizi kabul etti`,
+  offline_invite: (p) => `${p.displayName || p.username} seni birlikte izlemeye çağırıyor`,
+  offline_invite_accepted: (p) => `${p.displayName || p.username} davetinizi kabul etti — oda oluşturuldu`,
 };
 
 export function NotificationBell() {
@@ -93,7 +97,23 @@ export function NotificationBell() {
     setItems((list) => list.map((i) => ({ ...i, readAt: i.readAt ?? new Date().toISOString() })));
   }
 
-  async function respondInvite(inviteId: string, action: "accept" | "decline") {
+  async function markRead(notifId: string) {
+    await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [notifId] }),
+    });
+    setItems((list) => list.map((i) => (i.id === notifId ? { ...i, readAt: i.readAt ?? new Date().toISOString() } : i)));
+    setUnread((c) => Math.max(0, c - 1));
+  }
+
+  async function clearAll() {
+    await fetch("/api/notifications", { method: "DELETE" });
+    setItems([]);
+    setUnread(0);
+  }
+
+  async function respondInvite(inviteId: string, notifId: string, action: "accept" | "decline") {
     const res = await fetch("/api/rooms/invite", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -102,13 +122,43 @@ export function NotificationBell() {
     const data = await res.json();
     if (!data.success) return;
 
-    setItems((list) =>
-      list.filter((item) => !(item.type === "invite" && item.payload.inviteId === inviteId))
-    );
+    setItems((list) => list.map((i) => (i.id === notifId ? { ...i, readAt: new Date().toISOString() } : i)));
     setUnread((count) => Math.max(0, count - 1));
 
     if (action === "accept" && data.room?.id) {
       window.location.href = `/oda/${data.room.id}?code=${encodeURIComponent(data.room.code ?? "")}`;
+    }
+  }
+
+  async function respondJoinRequest(n: NotifItem, action: "accept" | "decline") {
+    const res = await fetch("/api/rooms/join-request", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        notificationId: n.id,
+        requesterId: n.payload.requesterId,
+        roomId: n.payload.roomId,
+        action,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) return;
+    setItems((list) => list.map((i) => (i.id === n.id ? { ...i, readAt: new Date().toISOString() } : i)));
+    setUnread((c) => Math.max(0, c - 1));
+  }
+
+  async function respondOfflineInvite(n: NotifItem, action: "accept" | "decline") {
+    const res = await fetch("/api/rooms/offline-invite", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notificationId: n.id, action }),
+    });
+    const data = await res.json();
+    if (!data.success) return;
+    setItems((list) => list.map((i) => (i.id === n.id ? { ...i, readAt: new Date().toISOString() } : i)));
+    setUnread((c) => Math.max(0, c - 1));
+    if (action === "accept" && data.room?.inviteUrl) {
+      window.location.href = data.room.inviteUrl;
     }
   }
 
@@ -137,15 +187,26 @@ export function NotificationBell() {
         <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg z-50">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
             <span className="text-sm font-semibold">Bildirimler</span>
-            {unread > 0 && (
-              <button
-                type="button"
-                onClick={markAllRead}
-                className="inline-flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-              >
-                <Check className="h-3 w-3" /> Tümünü okundu işaretle
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {unread > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllRead}
+                  className="inline-flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                >
+                  <Check className="h-3 w-3" /> Okundu
+                </button>
+              )}
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="inline-flex items-center gap-1 text-xs text-red-400 hover:text-red-300"
+                >
+                  <Trash2 className="h-3 w-3" /> Temizle
+                </button>
+              )}
+            </div>
           </div>
           <div className="max-h-96 overflow-y-auto">
             {loading && items.length === 0 ? (
@@ -160,12 +221,13 @@ export function NotificationBell() {
                 {items.map((n) => {
                   const label = TYPE_LABEL[n.type]?.(n.payload) ?? n.type;
                   const href = linkFor(n);
+                  const isRead = !!n.readAt;
                   const body = (
                     <div className="flex items-start gap-2 px-3 py-2.5">
                       <span
                         className={cn(
                           "mt-1 h-2 w-2 shrink-0 rounded-full",
-                          n.readAt ? "bg-transparent" : "bg-[var(--primary)]"
+                          isRead ? "bg-transparent" : "bg-[var(--primary)]"
                         )}
                         aria-hidden
                       />
@@ -177,8 +239,13 @@ export function NotificationBell() {
                       </div>
                     </div>
                   );
-                  const isInvite = n.type === "invite" && typeof n.payload.inviteId === "string";
-                  const isRoomRequest = n.type === "room_request" && typeof n.payload.roomId === "string";
+
+                  const isInvite = n.type === "invite" && typeof n.payload.inviteId === "string" && !isRead;
+                  const isJoinRequest = n.type === "room_join_request" && !isRead;
+                  const isOfflineInvite = n.type === "offline_invite" && !isRead;
+                  const isRoomRequest = n.type === "room_request" && typeof n.payload.roomId === "string" && !isRead;
+                  const hasRoomLink = (n.type === "room_join_accepted" || n.type === "offline_invite_accepted") && n.payload.inviteUrl;
+
                   return (
                     <li key={n.id}>
                       {isInvite ? (
@@ -187,14 +254,54 @@ export function NotificationBell() {
                           <div className="flex gap-2 px-3 pb-3">
                             <button
                               type="button"
-                              onClick={() => respondInvite(String(n.payload.inviteId), "accept")}
+                              onClick={() => respondInvite(String(n.payload.inviteId), n.id, "accept")}
                               className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
                             >
                               <Check className="h-3.5 w-3.5" /> Kabul Et
                             </button>
                             <button
                               type="button"
-                              onClick={() => respondInvite(String(n.payload.inviteId), "decline")}
+                              onClick={() => respondInvite(String(n.payload.inviteId), n.id, "decline")}
+                              className="inline-flex items-center justify-center gap-1 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)]"
+                            >
+                              <X className="h-3.5 w-3.5" /> Reddet
+                            </button>
+                          </div>
+                        </div>
+                      ) : isJoinRequest ? (
+                        <div className="block hover:bg-[var(--muted)]/40">
+                          {body}
+                          <div className="flex gap-2 px-3 pb-3">
+                            <button
+                              type="button"
+                              onClick={() => respondJoinRequest(n, "accept")}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                            >
+                              <Check className="h-3.5 w-3.5" /> Kabul Et
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => respondJoinRequest(n, "decline")}
+                              className="inline-flex items-center justify-center gap-1 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)]"
+                            >
+                              <X className="h-3.5 w-3.5" /> Reddet
+                            </button>
+                          </div>
+                        </div>
+                      ) : isOfflineInvite ? (
+                        <div className="block hover:bg-[var(--muted)]/40">
+                          {body}
+                          <div className="flex gap-2 px-3 pb-3">
+                            <button
+                              type="button"
+                              onClick={() => respondOfflineInvite(n, "accept")}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
+                            >
+                              <Check className="h-3.5 w-3.5" /> Kabul Et
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => respondOfflineInvite(n, "decline")}
                               className="inline-flex items-center justify-center gap-1 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)]"
                             >
                               <X className="h-3.5 w-3.5" /> Reddet
@@ -207,19 +314,36 @@ export function NotificationBell() {
                           <div className="flex gap-2 px-3 pb-3">
                             <Link
                               href={`/oda/${n.payload.roomId}?code=${encodeURIComponent(String(n.payload.roomCode ?? ""))}`}
-                              onClick={() => setOpen(false)}
+                              onClick={() => { markRead(n.id); setOpen(false); }}
                               className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]"
                             >
                               <Check className="h-3.5 w-3.5" /> Odaya Git
                             </Link>
                           </div>
                         </div>
+                      ) : hasRoomLink ? (
+                        <Link
+                          href={String(n.payload.inviteUrl)}
+                          onClick={() => { markRead(n.id); setOpen(false); }}
+                          className="block hover:bg-[var(--muted)]/40"
+                        >
+                          {body}
+                          {!isRead && (
+                            <div className="flex gap-2 px-3 pb-3">
+                              <span className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)]">
+                                <Check className="h-3.5 w-3.5" /> Odaya Git
+                              </span>
+                            </div>
+                          )}
+                        </Link>
                       ) : href ? (
-                        <Link href={href} onClick={() => setOpen(false)} className="block hover:bg-[var(--muted)]/40">
+                        <Link href={href} onClick={() => { markRead(n.id); setOpen(false); }} className="block hover:bg-[var(--muted)]/40">
                           {body}
                         </Link>
                       ) : (
-                        body
+                        <div onClick={() => markRead(n.id)} className="cursor-pointer hover:bg-[var(--muted)]/40">
+                          {body}
+                        </div>
                       )}
                     </li>
                   );
@@ -242,10 +366,16 @@ function linkFor(n: NotifItem): string | null {
     case "follow_request":
       return "/arkadaslar/istekler";
     case "invite":
-      return n.payload.roomId ? `/oda/${n.payload.roomId}` : "/arkadaslar";
+      return n.payload.inviteUrl ? String(n.payload.inviteUrl) : (n.payload.roomId ? `/oda/${n.payload.roomId}` : "/arkadaslar");
     case "room_join":
     case "room_request":
       return "/arkadaslar";
+    case "room_join_accepted":
+    case "offline_invite_accepted":
+      return n.payload.inviteUrl ? String(n.payload.inviteUrl) : "/arkadaslar";
+    case "room_join_request":
+    case "offline_invite":
+      return null;
     default:
       return null;
   }

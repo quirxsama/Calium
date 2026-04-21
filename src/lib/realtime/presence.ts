@@ -10,6 +10,7 @@ export type PresenceActivity = {
   animeId?: string | null;
   animeTitle?: string | null;
   episode?: number | null;
+  episodeId?: string | null;
   roomId?: string | null;
 } | null;
 

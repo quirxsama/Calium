@@ -103,6 +103,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
         : currentEp?.number
         ? Number(currentEp.number)
         : null,
+    episodeId: currentEp?.ID ?? null,
     roomId: null,
   });
 

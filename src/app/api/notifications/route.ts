@@ -67,3 +67,14 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE() {
+  const { user, error } = await requireUser();
+  if (error) return error;
+
+  await prisma.notification.deleteMany({
+    where: { userId: user!.id },
+  });
+
+  return NextResponse.json({ success: true });
+}

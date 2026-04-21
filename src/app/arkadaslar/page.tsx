@@ -17,10 +17,13 @@ type UserCard = {
   displayName: string | null;
   avatarUrl: string | null;
   isPrivate: boolean;
+  allowOfflineInvites?: boolean;
   activity?: {
     kind?: string;
+    animeId?: string | null;
     animeTitle?: string | null;
     episode?: number | null;
+    episodeId?: string | null;
     roomId?: string | null;
   } | null;
 };
@@ -116,19 +119,48 @@ export default function FriendsPage() {
     }
   }
 
-  async function sendRoomRequest(targetUserId: string, roomId?: string | null, roomCode?: string | null) {
-    setRequestingUserId(targetUserId);
+  async function requestJoinRoom(roomId: string) {
+    setRequestingUserId(roomId);
     try {
-      const res = await fetch("/api/rooms/request", {
+      const res = await fetch("/api/rooms/join-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId, roomId: roomId ?? undefined, roomCode: roomCode ?? undefined }),
+        body: JSON.stringify({ roomId }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast(data.error ?? "İstek gönderilemedi.", "error");
+      } else if (data.direct) {
+        window.location.href = data.roomUrl;
+      } else {
+        toast("Katılma isteği gönderildi.", "success");
+      }
+    } finally {
+      setRequestingUserId(null);
+    }
+  }
+
+  async function sendOfflineInvite(target: UserCard) {
+    const a = target.activity;
+    if (!a?.animeId || !a.episodeId) return;
+    setRequestingUserId(target.id);
+    try {
+      const res = await fetch("/api/rooms/offline-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: target.id,
+          animeId: a.animeId,
+          animeName: a.animeTitle ?? "Bilinmeyen",
+          episodeId: a.episodeId,
+          episodeName: a.episode ? `Bölüm ${a.episode}` : null,
+        }),
       });
       const data = await res.json();
       if (!data.success) {
         toast(data.error ?? "İstek gönderilemedi.", "error");
       } else {
-        toast("İstek gönderildi.", "success");
+        toast("Çevrimdışı davet gönderildi.", "success");
       }
     } finally {
       setRequestingUserId(null);
@@ -331,24 +363,29 @@ export default function FriendsPage() {
                 </Link>
                 <div className="flex shrink-0 items-center gap-2">
                   {p?.activity?.roomId && (
-                    <>
-                      <Link
-                        href={`/oda/${p.activity.roomId}`}
-                        className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--border)] px-3 text-xs hover:bg-[var(--muted)]"
-                      >
-                        <DoorOpen className="h-3.5 w-3.5" /> Odaya Katıl
-                      </Link>
-                      {status !== "dnd" && (
-                        <button
-                          type="button"
-                          onClick={() => void sendRoomRequest(u.id, p.activity?.roomId ?? null, null)}
-                          disabled={requestingUserId === u.id}
-                          className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-3 text-xs text-[var(--primary)] disabled:opacity-60"
-                        >
-                          {requestingUserId === u.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} İstek Gönder
-                        </button>
-                      )}
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => void requestJoinRoom(p.activity!.roomId!)}
+                      disabled={requestingUserId === p.activity.roomId}
+                      className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--border)] px-3 text-xs hover:bg-[var(--muted)] disabled:opacity-60"
+                    >
+                      {requestingUserId === p.activity.roomId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DoorOpen className="h-3.5 w-3.5" />} Odaya Katıl
+                    </button>
+                  )}
+                  {!p?.activity?.roomId &&
+                    p?.activity?.kind === "watching" &&
+                    p.activity.animeId &&
+                    p.activity.episodeId &&
+                    u.allowOfflineInvites &&
+                    status !== "dnd" && (
+                    <button
+                      type="button"
+                      onClick={() => void sendOfflineInvite({ ...u, activity: p.activity })}
+                      disabled={requestingUserId === u.id}
+                      className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-3 text-xs text-[var(--primary)] disabled:opacity-60"
+                    >
+                      {requestingUserId === u.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} İstek Gönder
+                    </button>
                   )}
                 </div>
                 </div>

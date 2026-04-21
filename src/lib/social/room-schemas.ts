@@ -48,5 +48,30 @@ export const kickSchema = z.object({
   ban: z.boolean().optional(),
 });
 
+export const joinRequestSchema = z.object({
+  roomId: z.string().min(1).max(64),
+});
+
+export const joinRequestRespondSchema = z.object({
+  notificationId: z.string().min(1).max(64),
+  requesterId: z.string().min(1).max(64),
+  roomId: z.string().min(1).max(64),
+  action: z.enum(["accept", "decline"]),
+});
+
+export const offlineInviteSchema = z.object({
+  targetUserId: z.string().min(1).max(64),
+  animeId: z.string().min(1).max(64),
+  animeName: z.string().min(1).max(200),
+  episodeId: z.string().min(1).max(64),
+  episodeName: z.string().max(200).nullable().optional(),
+  poster: z.string().url().max(500).nullable().optional(),
+});
+
+export const offlineInviteRespondSchema = z.object({
+  notificationId: z.string().min(1).max(64),
+  action: z.enum(["accept", "decline"]),
+});
+
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;

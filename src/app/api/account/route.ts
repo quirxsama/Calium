@@ -40,6 +40,7 @@ export async function PATCH(req: NextRequest) {
   if (parsed.data.listsPublic !== undefined) data.listsPublic = parsed.data.listsPublic;
   if (parsed.data.isPrivate !== undefined) data.isPrivate = parsed.data.isPrivate;
   if (parsed.data.dndEnabled !== undefined) data.dndEnabled = parsed.data.dndEnabled;
+  if (parsed.data.allowOfflineInvites !== undefined) data.allowOfflineInvites = parsed.data.allowOfflineInvites;
 
   const updated = await prisma.user.update({
     where: { id: user!.id },
@@ -56,6 +57,7 @@ export async function PATCH(req: NextRequest) {
       listsPublic: true,
       isPrivate: true,
       dndEnabled: true,
+      allowOfflineInvites: true,
     },
   });
 

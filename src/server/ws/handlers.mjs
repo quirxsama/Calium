@@ -137,6 +137,7 @@ function sanitizeActivity(a) {
     animeId: a.animeId ? String(a.animeId).slice(0, 64) : null,
     animeTitle: a.animeTitle ? String(a.animeTitle).slice(0, 200) : null,
     episode: a.episode != null ? Number(a.episode) || null : null,
+    episodeId: a.episodeId ? String(a.episodeId).slice(0, 64) : null,
     roomId: a.roomId ? String(a.roomId).slice(0, 64) : null,
   };
 }

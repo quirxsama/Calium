@@ -23,6 +23,7 @@ export const updateProfileSchema = z.object({
   listsPublic: z.boolean().optional(),
   isPrivate: z.boolean().optional(),
   dndEnabled: z.boolean().optional(),
+  allowOfflineInvites: z.boolean().optional(),
 });
 
 export const changePasswordSchema = z.object({

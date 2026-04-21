@@ -20,6 +20,7 @@ model User {
   listsPublic   Boolean  @default(true)
   isPrivate     Boolean  @default(false) // gizli hesap — takip onayı gerekir
   dndEnabled    Boolean  @default(false) // rahatsız etme modu
+  allowOfflineInvites Boolean @default(false) // arkadaşlar oda açmadan da davet gönderebilir
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

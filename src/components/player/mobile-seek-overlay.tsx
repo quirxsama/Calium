@@ -18,10 +18,21 @@ type Props = {
 
 export function MobileSeekOverlay({ playerRef }: Props) {
   const lastTapRef = useRef<{ time: number; side: "left" | "right" } | null>(null);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accumulatedRef = useRef(0);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ripple, setRipple] = useState<RippleState | null>(null);
   const keyRef = useRef(0);
+
+  const toggleControls = useCallback(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    if (p.controls.showing) {
+      p.controls.hide();
+    } else {
+      p.controls.show();
+    }
+  }, [playerRef]);
 
   const handleSeek = useCallback(
     (side: "left" | "right") => {
@@ -51,13 +62,24 @@ export function MobileSeekOverlay({ playerRef }: Props) {
       const last = lastTapRef.current;
 
       if (last && last.side === side && now - last.time < DOUBLE_TAP_MS) {
+        // Double tap — cancel pending single-tap toggle and seek
         lastTapRef.current = null;
+        if (singleTapTimerRef.current) {
+          clearTimeout(singleTapTimerRef.current);
+          singleTapTimerRef.current = null;
+        }
         handleSeek(side);
       } else {
+        // First tap — schedule controls toggle; will be cancelled if double-tap follows
         lastTapRef.current = { time: now, side };
+        if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = setTimeout(() => {
+          singleTapTimerRef.current = null;
+          toggleControls();
+        }, DOUBLE_TAP_MS);
       }
     },
-    [handleSeek]
+    [handleSeek, toggleControls]
   );
 
   return (

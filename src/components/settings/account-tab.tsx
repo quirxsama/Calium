@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
-import { Loader2, KeyRound, Mail, Trash2, AlertTriangle, Shield, BellOff, Lock } from "lucide-react";
+import { Loader2, KeyRound, Mail, Trash2, AlertTriangle, Shield, BellOff, Lock, Users } from "lucide-react";
 
 export function AccountTab() {
   const { user, logout } = useAuth();
@@ -33,9 +33,10 @@ function PrivacySection() {
   const { user, refresh } = useAuth();
   const [isPrivate, setIsPrivate] = useState<boolean>(!!user?.isPrivate);
   const [dnd, setDnd] = useState<boolean>(!!user?.dndEnabled);
-  const [savingKey, setSavingKey] = useState<"isPrivate" | "dndEnabled" | null>(null);
+  const [offlineInvites, setOfflineInvites] = useState<boolean>(!!user?.allowOfflineInvites);
+  const [savingKey, setSavingKey] = useState<"isPrivate" | "dndEnabled" | "allowOfflineInvites" | null>(null);
 
-  async function save(key: "isPrivate" | "dndEnabled", value: boolean) {
+  async function save(key: "isPrivate" | "dndEnabled" | "allowOfflineInvites", value: boolean) {
     setSavingKey(key);
     try {
       const res = await fetch("/api/account", {
@@ -47,7 +48,8 @@ function PrivacySection() {
       if (!data.success) {
         // rollback
         if (key === "isPrivate") setIsPrivate(!value);
-        else setDnd(!value);
+        else if (key === "dndEnabled") setDnd(!value);
+        else if (key === "allowOfflineInvites") setOfflineInvites(!value);
       } else {
         refresh?.();
       }
@@ -79,6 +81,18 @@ function PrivacySection() {
         onChange={(v) => {
           setDnd(v);
           save("dndEnabled", v);
+        }}
+      />
+      <div className="my-4 border-t border-[var(--border)]" />
+      <Toggle
+        icon={<Users className="h-4 w-4" />}
+        label="Çevrimdışı Davetler"
+        description="Siz bir oda açmasanız bile arkadaşlarınız size katılma isteği gönderebilir. Kabul ederseniz otomatik oda oluşur."
+        value={offlineInvites}
+        loading={savingKey === "allowOfflineInvites"}
+        onChange={(v) => {
+          setOfflineInvites(v);
+          save("allowOfflineInvites", v);
         }}
       />
     </Section>
