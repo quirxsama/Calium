@@ -3,7 +3,7 @@
   "version": "0.6.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --no-turbopack",
+    "dev": "next dev",
     "dev:turbo": "next dev",
     "dev:ws": "NODE_ENV=development node server.mjs",
     "build": "next build",

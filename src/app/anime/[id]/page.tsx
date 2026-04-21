@@ -56,7 +56,7 @@ export default async function AnimeDetailPage({
             alt={details.name}
             fill
             priority
-            sizes="100vw"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 60vw"
             className="object-cover"
           />
         ) : (

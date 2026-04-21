@@ -388,16 +388,26 @@ export function AnimePlayer({
       const focusables = el.querySelectorAll(
         'button, [role="button"], [role="slider"], [role="menuitem"], input, a, [tabindex]'
       );
-      focusables.forEach((item) => {
+      for (let i = 0; i < focusables.length; i++) {
+        const item = focusables[i];
         if (item !== el && item.getAttribute("tabindex") !== "-1") {
           item.setAttribute("tabindex", "-1");
         }
-      });
+      }
     };
 
     disableTab();
 
-    const observer = new MutationObserver(disableTab);
+    let rafId: number | null = null;
+    const debouncedDisableTab = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        disableTab();
+        rafId = null;
+      });
+    };
+
+    const observer = new MutationObserver(debouncedDisableTab);
     observer.observe(el, { childList: true, subtree: true });
 
     const blockMobileDoubleClick = (e: MouseEvent) => {
@@ -480,6 +490,7 @@ export function AnimePlayer({
       document.removeEventListener("fullscreenchange", onNativeFullscreenChange);
       unlockOrientation();
       observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [onFullscreenChange]);
 
@@ -669,3 +680,5 @@ export function AnimePlayer({
     </div>
   );
 }
+
+export default AnimePlayer;

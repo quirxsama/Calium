@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AnimePlayer } from "./anime-player";
+import dynamic from "next/dynamic";
 import type {
   AnimeDetails,
   EpisodeData,
@@ -16,6 +16,13 @@ import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
 import { cn, formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
 import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
+
+const AnimePlayer = dynamic(() => import("./anime-player").then((m) => m.AnimePlayer), {
+  ssr: false,
+  loading: () => (
+    <div className="aspect-video w-full rounded-xl bg-[var(--muted)] skeleton" />
+  ),
+});
 
 type Props = {
   details: AnimeDetails;
