@@ -2,7 +2,7 @@
 import "@vidstack/react/player/styles/default/theme.css";
 import "@vidstack/react/player/styles/default/layouts/video.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   MediaPlayer,
@@ -130,6 +130,9 @@ export function AnimePlayer({
   const readyFiredRef = useRef(false);
   const overlayControlsTimerRef = useRef<number | null>(null);
   const orientationLockedRef = useRef(false);
+  const outroTimerRef = useRef<number | null>(null);
+  const outroStartRef = useRef<number | null>(null);
+  const fullscreenResumePendingRef = useRef(false);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
   const [outroProgress, setOutroProgress] = useState(0);
@@ -217,19 +220,33 @@ export function AnimePlayer({
   }, [active?.url]);
 
   useEffect(() => {
-    if (!showOutroSkip || (!nextEpisodeHref && !onNextEpisode)) return;
-
-    const totalMs = 5000;
-    const startedAt = Date.now();
-
-    const resetTimer = window.setTimeout(() => {
+    if (!showOutroSkip || (!nextEpisodeHref && !onNextEpisode)) {
+      if (outroTimerRef.current) {
+        window.clearInterval(outroTimerRef.current);
+        outroTimerRef.current = null;
+      }
+      outroStartRef.current = null;
       setOutroProgress(0);
-    }, 0);
-    const timer = window.setInterval(() => {
+      return;
+    }
+
+    if (outroTimerRef.current) return;
+
+    const totalMs = 6000;
+    const startedAt = Date.now();
+    outroStartRef.current = startedAt;
+    setOutroProgress(0);
+
+    outroTimerRef.current = window.setInterval(() => {
       const elapsed = Date.now() - startedAt;
-      setOutroProgress(Math.min(1, elapsed / totalMs));
+      const progress = Math.min(1, elapsed / totalMs);
+      setOutroProgress(progress);
       if (elapsed >= totalMs) {
-        window.clearInterval(timer);
+        if (outroTimerRef.current) {
+          window.clearInterval(outroTimerRef.current);
+          outroTimerRef.current = null;
+        }
+        outroStartRef.current = null;
         setOutroProgress(1);
         if (onNextEpisode) {
           onNextEpisode();
@@ -237,16 +254,52 @@ export function AnimePlayer({
           router.push(nextEpisodeHref);
         }
       }
-    }, 1000);
+    }, 100);
 
     return () => {
-      window.clearTimeout(resetTimer);
-      window.clearInterval(timer);
+      if (outroTimerRef.current) {
+        window.clearInterval(outroTimerRef.current);
+        outroTimerRef.current = null;
+      }
+      outroStartRef.current = null;
     };
   }, [showOutroSkip, nextEpisodeHref, onNextEpisode, router]);
 
+  const cancelOutroAutoAdvance = useCallback(() => {
+    if (outroTimerRef.current) {
+      window.clearInterval(outroTimerRef.current);
+      outroTimerRef.current = null;
+    }
+    outroStartRef.current = null;
+    setOutroProgress(0);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const shouldRestore = sessionStorage.getItem("anizium:resume-fullscreen") === "1";
+    if (shouldRestore) {
+      fullscreenResumePendingRef.current = true;
+      sessionStorage.removeItem("anizium:resume-fullscreen");
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (outroTimerRef.current) {
+        window.clearInterval(outroTimerRef.current);
+        outroTimerRef.current = null;
+      }
+      if (overlayControlsTimerRef.current) {
+        window.clearTimeout(overlayControlsTimerRef.current);
+        overlayControlsTimerRef.current = null;
+      }
+      sessionStorage.removeItem("anizium:resume-fullscreen");
+    };
+  }, []);
+
   function changeQuality(idx: number) {
     if (idx === activeIdx) return;
+    cancelOutroAutoAdvance();
     const p = playerRef.current;
     if (p) resumeFromRef.current = p.currentTime;
     setActiveIdx(idx);
@@ -254,6 +307,7 @@ export function AnimePlayer({
 
   function changeAudio(idx: number) {
     if (idx === activeAudio) return;
+    cancelOutroAutoAdvance();
     const p = playerRef.current;
     if (p) resumeFromRef.current = p.currentTime;
     const nextTrack = audioTracks[idx];
@@ -305,12 +359,20 @@ export function AnimePlayer({
   function skipIntro() {
     const p = playerRef.current;
     if (p && introEnd != null) {
+      cancelOutroAutoAdvance();
       p.currentTime = introEnd;
       setShowIntroSkip(false);
     }
   }
 
   function goNextEpisode() {
+    const isFullscreen = Boolean(document.fullscreenElement);
+    fullscreenResumePendingRef.current = isFullscreen;
+    if (typeof window !== "undefined") {
+      if (isFullscreen) sessionStorage.setItem("anizium:resume-fullscreen", "1");
+      else sessionStorage.removeItem("anizium:resume-fullscreen");
+    }
+    cancelOutroAutoAdvance();
     if (onNextEpisode) {
       onNextEpisode();
       return;
@@ -573,15 +635,26 @@ export function AnimePlayer({
         aspectRatio="16/9"
         volume={volume}
         onVolumeChange={(detail) => {
+          cancelOutroAutoAdvance();
           localStorage.setItem(VOLUME_STORAGE_KEY, String(detail.volume));
           setVolume(detail.volume);
         }}
         onCanPlay={onCanPlay}
         onTimeUpdate={onTU}
-        onEnded={onEnded}
-        onPlay={onPlay}
-        onPause={onPause}
+        onEnded={() => {
+          cancelOutroAutoAdvance();
+          onEnded?.();
+        }}
+        onPlay={() => {
+          cancelOutroAutoAdvance();
+          onPlay?.();
+        }}
+        onPause={() => {
+          cancelOutroAutoAdvance();
+          onPause?.();
+        }}
         onSeeked={() => {
+          cancelOutroAutoAdvance();
           if (!onSeeked) return;
           const t = playerRef.current?.currentTime ?? 0;
           onSeeked(t);
@@ -629,6 +702,7 @@ export function AnimePlayer({
             ),
           }}
         />
+        <FullscreenResumeBridge playerRef={playerRef} pendingRef={fullscreenResumePendingRef} />
         {overlayTopRight && controlsVisible && (
           <div className={cn("absolute left-3 top-3 z-[60] max-w-[min(88vw,320px)] transition-opacity duration-200 opacity-100")}>
             {overlayTopRight}
@@ -682,3 +756,24 @@ export function AnimePlayer({
 }
 
 export default AnimePlayer;
+
+function FullscreenResumeBridge({
+  playerRef,
+  pendingRef,
+}: {
+  playerRef: React.RefObject<MediaPlayerInstance | null>;
+  pendingRef: MutableRefObject<boolean>;
+}) {
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p || !pendingRef.current) return;
+    pendingRef.current = false;
+    queueMicrotask(() => {
+      try {
+        void p.enterFullscreen?.();
+      } catch {}
+    });
+  }, [pendingRef, playerRef]);
+
+  return null;
+}
