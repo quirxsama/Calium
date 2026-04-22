@@ -213,10 +213,20 @@ export default async function AnimeDetailPage({
           <section className="mt-10">
             <h2 className="text-2xl font-bold mb-4">Bölümler</h2>
             <SeasonTabs animeId={details.ID} seasons={details.seasons ?? []} />
+
+            <RecommendedAnime
+              items={similar?.page?.data ?? []}
+              title="Bu animeyi izlediysen bunları da beğenebilirsin"
+            />
           </section>
         )}
 
-        <RecommendedAnime items={similar?.page?.data ?? []} />
+        {(details.seasons ?? []).length === 0 && (
+          <RecommendedAnime
+            items={similar?.page?.data ?? []}
+            title="Bu animeyi izlediysen bunları da beğenebilirsin"
+          />
+        )}
       </div>
     </div>
   );

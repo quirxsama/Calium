@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { User, Calendar, List, Heart, Lock, Loader2, Users, Settings2 } from "lucide-react";
+import { User, Calendar, List, Heart, Lock, Loader2, Users, Settings2, Activity, Radio } from "lucide-react";
 import { FollowButton, type FollowStatus } from "@/components/social/follow-button";
 import { usePresenceSubscribe } from "@/lib/realtime/presence";
 import { PresenceDot, activityText } from "@/components/social/presence-dot";
@@ -214,6 +214,29 @@ export default function ProfilePage() {
                 </span>
               </>
             )}
+          </div>
+
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
+                <Radio className="h-3.5 w-3.5" /> Durum
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+                <PresenceDot status={status} withRing={false} className="h-2.5 w-2.5" />
+                {status === "online" ? "Şu an aktif" : status === "away" ? "Kısa süreli uzak" : status === "dnd" ? "Rahatsız edilmek istemiyor" : "Şu an çevrimdışı"}
+              </div>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">Canlı durum profilde daha görünür hale getirildi.</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
+                <Activity className="h-3.5 w-3.5" /> Etkinlik
+              </div>
+              <p className="mt-3 text-sm font-semibold text-[var(--foreground)] line-clamp-2">
+                {activity ?? "Henüz paylaşılmış canlı etkinlik yok"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">İzleme veya oda etkinliği burada öne çıkar.</p>
+            </div>
           </div>
         </div>
       </div>

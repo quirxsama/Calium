@@ -133,6 +133,7 @@ export function AnimePlayer({
   const outroTimerRef = useRef<number | null>(null);
   const outroStartRef = useRef<number | null>(null);
   const fullscreenResumePendingRef = useRef(false);
+  const autoplayResumePendingRef = useRef(false);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
   const [outroProgress, setOutroProgress] = useState(0);
@@ -226,7 +227,9 @@ export function AnimePlayer({
         outroTimerRef.current = null;
       }
       outroStartRef.current = null;
-      setOutroProgress(0);
+      queueMicrotask(() => {
+        setOutroProgress(0);
+      });
       return;
     }
 
@@ -235,7 +238,9 @@ export function AnimePlayer({
     const totalMs = 6000;
     const startedAt = Date.now();
     outroStartRef.current = startedAt;
-    setOutroProgress(0);
+    queueMicrotask(() => {
+      setOutroProgress(0);
+    });
 
     outroTimerRef.current = window.setInterval(() => {
       const elapsed = Date.now() - startedAt;
@@ -248,11 +253,13 @@ export function AnimePlayer({
         }
         outroStartRef.current = null;
         setOutroProgress(1);
-        if (onNextEpisode) {
-          onNextEpisode();
-        } else if (nextEpisodeHref) {
-          router.push(nextEpisodeHref);
-        }
+        window.setTimeout(() => {
+          if (onNextEpisode) {
+            onNextEpisode();
+          } else if (nextEpisodeHref) {
+            router.push(nextEpisodeHref);
+          }
+        }, 120);
       }
     }, 100);
 
@@ -277,9 +284,14 @@ export function AnimePlayer({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const shouldRestore = sessionStorage.getItem("anizium:resume-fullscreen") === "1";
+    const shouldAutoplay = sessionStorage.getItem("anizium:resume-autoplay") === "1";
     if (shouldRestore) {
       fullscreenResumePendingRef.current = true;
       sessionStorage.removeItem("anizium:resume-fullscreen");
+    }
+    if (shouldAutoplay) {
+      autoplayResumePendingRef.current = true;
+      sessionStorage.removeItem("anizium:resume-autoplay");
     }
   }, []);
 
@@ -294,6 +306,7 @@ export function AnimePlayer({
         overlayControlsTimerRef.current = null;
       }
       sessionStorage.removeItem("anizium:resume-fullscreen");
+      sessionStorage.removeItem("anizium:resume-autoplay");
     };
   }, []);
 
@@ -368,9 +381,13 @@ export function AnimePlayer({
   function goNextEpisode() {
     const isFullscreen = Boolean(document.fullscreenElement);
     fullscreenResumePendingRef.current = isFullscreen;
+    autoplayResumePendingRef.current = isFullscreen;
     if (typeof window !== "undefined") {
       if (isFullscreen) sessionStorage.setItem("anizium:resume-fullscreen", "1");
       else sessionStorage.removeItem("anizium:resume-fullscreen");
+
+      if (isFullscreen) sessionStorage.setItem("anizium:resume-autoplay", "1");
+      else sessionStorage.removeItem("anizium:resume-autoplay");
     }
     cancelOutroAutoAdvance();
     if (onNextEpisode) {
@@ -702,7 +719,11 @@ export function AnimePlayer({
             ),
           }}
         />
-        <FullscreenResumeBridge playerRef={playerRef} pendingRef={fullscreenResumePendingRef} />
+        <FullscreenResumeBridge
+          playerRef={playerRef}
+          pendingRef={fullscreenResumePendingRef}
+          autoplayPendingRef={autoplayResumePendingRef}
+        />
         {overlayTopRight && controlsVisible && (
           <div className={cn("absolute left-3 top-3 z-[60] max-w-[min(88vw,320px)] transition-opacity duration-200 opacity-100")}>
             {overlayTopRight}
@@ -760,20 +781,54 @@ export default AnimePlayer;
 function FullscreenResumeBridge({
   playerRef,
   pendingRef,
+  autoplayPendingRef,
 }: {
   playerRef: React.RefObject<MediaPlayerInstance | null>;
   pendingRef: MutableRefObject<boolean>;
+  autoplayPendingRef: MutableRefObject<boolean>;
 }) {
   useEffect(() => {
     const p = playerRef.current;
-    if (!p || !pendingRef.current) return;
+    if (!p) return;
+
+    const shouldRestoreFullscreen = pendingRef.current;
+    const shouldAutoplay = autoplayPendingRef.current;
+
     pendingRef.current = false;
+    autoplayPendingRef.current = false;
+
+    if (!shouldRestoreFullscreen && !shouldAutoplay) return;
+
     queueMicrotask(() => {
-      try {
-        void p.enterFullscreen?.();
-      } catch {}
+      if (shouldRestoreFullscreen) {
+        try {
+          void p.enterFullscreen?.();
+        } catch {}
+      }
+
+      if (shouldAutoplay) {
+        queueMicrotask(() => {
+          const playerLike = p as unknown as { play?: () => Promise<void> | void; muted?: boolean };
+          try {
+            const maybePromise = playerLike.play?.();
+            if (maybePromise && typeof (maybePromise as Promise<void>).catch === "function") {
+              (maybePromise as Promise<void>).catch(() => {
+                try {
+                  playerLike.muted = true;
+                  void playerLike.play?.();
+                } catch {}
+              });
+            }
+          } catch {
+            try {
+              playerLike.muted = true;
+              void playerLike.play?.();
+            } catch {}
+          }
+        });
+      }
     });
-  }, [pendingRef, playerRef]);
+  }, [autoplayPendingRef, pendingRef, playerRef]);
 
   return null;
 }

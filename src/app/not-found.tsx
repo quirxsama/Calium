@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Home, Search } from "lucide-react";
 
@@ -16,13 +17,14 @@ export default function NotFoundPage() {
       </div>
 
       <div className="mb-6 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-xl">
-        <img
+        <Image
           src="https://media.tenor.com/WBxnJ2ae_sgAAAAi/nanami-chia-lonely-lonely-i-guess-i%27m-lonely.gif"
           alt="Dans eden anime kızı"
           width={320}
           height={240}
           className="block"
-          loading="eager"
+          priority
+          unoptimized
         />
       </div>
 

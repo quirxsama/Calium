@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight, User } from "lucide-react";
+import { User } from "lucide-react";
 import type { TMDBCast } from "@/lib/anizium/schemas";
 
 function CastCard({ person }: { person: TMDBCast }) {

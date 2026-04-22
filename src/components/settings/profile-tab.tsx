@@ -22,43 +22,70 @@ export function ProfileTab() {
 
   const [animeQuery, setAnimeQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; poster: string | null }[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [searchCommittedQuery, setSearchCommittedQuery] = useState("");
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setLoadingPresets(true);
+    let cancelled = false;
     fetch("/api/avatar-presets")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.avatars)) {
+        if (!cancelled && data.success && Array.isArray(data.avatars)) {
           setAvatarPresets(data.avatars);
           setPresetSource(data.source ?? null);
         }
       })
-      .catch(() => setAvatarPresets([]))
-      .finally(() => setLoadingPresets(false));
+      .catch(() => {
+        if (!cancelled) setAvatarPresets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPresets(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     const q = animeQuery.trim();
-    if (!q || q.length < 2) {
-      setSearchResults([]);
-      return;
-    }
+    if (!q || q.length < 2) return;
+
+    let cancelled = false;
     const timer = setTimeout(() => {
-      setSearching(true);
       fetch(`/api/anime/search?q=${encodeURIComponent(q)}`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.success && Array.isArray(data.results)) {
+          if (!cancelled && data.success && Array.isArray(data.results)) {
             setSearchResults(data.results);
+            setSearchCommittedQuery(q);
           }
         })
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearching(false));
+        .catch(() => {
+          if (!cancelled) {
+            setSearchResults([]);
+            setSearchCommittedQuery(q);
+          }
+        });
     }, 300);
-    return () => clearTimeout(timer);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [animeQuery]);
+
+  const searching = animeQuery.trim().length >= 2 && animeQuery.trim() !== searchCommittedQuery;
+
+  useEffect(() => {
+    if (animeQuery.trim().length >= 2) return;
+    if (searchResults.length === 0 && searchCommittedQuery === "") return;
+
+    queueMicrotask(() => {
+      setSearchResults([]);
+      setSearchCommittedQuery("");
+    });
+  }, [animeQuery, searchCommittedQuery, searchResults.length]);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -73,6 +100,7 @@ export function ProfileTab() {
   async function selectAnimeForAvatars(id: string, name: string) {
     setAnimeQuery("");
     setSearchResults([]);
+    setSearchCommittedQuery("");
     setPresetSource(name);
     setLoadingPresets(true);
     try {
@@ -92,6 +120,7 @@ export function ProfileTab() {
     setPresetSource(null);
     setAnimeQuery("");
     setSearchResults([]);
+    setSearchCommittedQuery("");
     setLoadingPresets(true);
     fetch("/api/avatar-presets")
       .then((res) => res.json())

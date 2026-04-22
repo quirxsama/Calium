@@ -8,6 +8,8 @@ import { GENRES } from "@/lib/anizium/constants";
 import { HeroCarousel, type HeroItem } from "@/components/anime/hero-carousel";
 import { AnimeRail } from "@/components/anime/rail";
 import { ContinueWatching } from "@/components/anime/continue-watching";
+import { EngagementPanels } from "@/components/discovery/engagement-panels";
+import { PersonalRecommendationsRail } from "@/components/discovery/personal-recommendations-rail";
 import type { AnimeData, LatestEpisodeData } from "@/lib/anizium/schemas";
 
 function latestToAnime(list: LatestEpisodeData[]): AnimeData[] {
@@ -96,6 +98,8 @@ export default async function Home() {
       <div className="pointer-events-none absolute inset-x-0 top-[70vh] -z-10 h-[60vh] mesh-bg opacity-70" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-12 md:pt-16">
+        <EngagementPanels />
+
         <ContinueWatching />
 
         <AnimeRail
@@ -103,6 +107,9 @@ export default async function Home() {
           items={latestAnime}
           href="/kesfet"
         />
+
+        <PersonalRecommendationsRail />
+
         <AnimeRail
           title="Top 100"
           items={top.page.data}

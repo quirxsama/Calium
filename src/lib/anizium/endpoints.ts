@@ -136,9 +136,33 @@ export async function getEpisodeSources(
 // ---- Benzer animeler ----
 
 export async function getSimilarAnimes(id: string): Promise<ApiResponse> {
-  const raw = await aniziumFetch(`/anime/similar?id=${encodeURIComponent(id)}`, {
+  const raw = await aniziumFetch<unknown>(`/anime/similar?id=${encodeURIComponent(id)}`, {
     revalidate: CACHE_TTL.detail,
   });
+
+  // Dokümana göre /anime/similar yanıtı bazı durumlarda
+  // { success, data: AnimeData[] } formatında dönebiliyor.
+  // Uygulamanın geri kalanı ApiResponse (page.data) beklediği için normalize ediyoruz.
+  const parsed = raw as {
+    success?: boolean;
+    data?: unknown;
+    page?: unknown;
+  };
+
+  if (!parsed.page && Array.isArray(parsed.data)) {
+    return ApiResponseSchema.parse({
+      success: parsed.success ?? true,
+      page: {
+        page: 1,
+        per_page_items: parsed.data.length,
+        previous_page: null,
+        next_page: null,
+        total_pages: 1,
+        data: parsed.data,
+      },
+    });
+  }
+
   return ApiResponseSchema.parse(raw);
 }
 
