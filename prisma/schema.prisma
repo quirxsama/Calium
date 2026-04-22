@@ -241,6 +241,7 @@ model Preference {
   captionSettings String? // JSON blob
   autoPlay        Boolean @default(true)
   defaultQuality  String  @default("auto")
+  defaultDubLanguage String @default("ja")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

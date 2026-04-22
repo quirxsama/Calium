@@ -24,6 +24,10 @@ import { MobileSeekOverlay } from "./mobile-seek-overlay";
 import { GestureHint } from "./gesture-hint";
 const AUDIO_STORAGE_KEY = "anizium-audio-track";
 const VOLUME_STORAGE_KEY = "anizium-player-volume";
+const PLAYER_PREFS_STORAGE_KEY = "calium:player-prefs";
+
+type PreferredDubLanguage = "en" | "tr" | "ja";
+type PreferredQuality = "auto" | "2160p" | "1440p" | "1080p" | "720p" | "480p";
 
 type Props = {
   groups: SourceGroup[];
@@ -71,6 +75,55 @@ function groupLabel(g: SourceGroup, index: number): string {
 function isTurkish(name: string): boolean {
   const lower = name.toLowerCase();
   return lower.includes("tur") || lower.includes("türk");
+}
+
+function isEnglish(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.includes("eng") || lower.includes("english") || lower.includes("ingiliz");
+}
+
+function isJapanese(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.includes("jap") || lower.includes("jpn") || lower.includes("japon");
+}
+
+function getDubLanguageScore(label: string, preferred: PreferredDubLanguage): number {
+  if (preferred === "tr" && isTurkish(label)) return 3;
+  if (preferred === "en" && isEnglish(label)) return 3;
+  if (preferred === "ja" && isJapanese(label)) return 3;
+  if (isJapanese(label)) return 2;
+  return 0;
+}
+
+function getInitialAudioTrackIndex(audioTracks: AudioTrack[], preferred: PreferredDubLanguage): number {
+  if (audioTracks.length === 0) return 0;
+
+  let bestIndex = 0;
+  let bestScore = -1;
+
+  for (const [index, track] of audioTracks.entries()) {
+    const score = getDubLanguageScore(track.label, preferred);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  }
+
+  return bestScore > 0 ? bestIndex : 0;
+}
+
+function getInitialQualityIndex(variants: QualityVariant[], preferred: PreferredQuality): number {
+  if (variants.length === 0) return 0;
+  if (preferred === "auto") return 0;
+
+  const target = Number(preferred.replace("p", ""));
+  const exactMatch = variants.findIndex((variant) => variant.quality === target);
+  if (exactMatch >= 0) return exactMatch;
+
+  const lowerOrEqual = variants.findIndex((variant) => (variant.quality ?? 0) <= target);
+  if (lowerOrEqual >= 0) return lowerOrEqual;
+
+  return variants.length - 1;
 }
 
 function srtToVtt(srt: string): string {
@@ -166,20 +219,67 @@ export function AnimePlayer({
       .filter((t) => t.variants.length > 0);
   }, [groups]);
 
-  const [activeAudio, setActiveAudio] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    const saved = localStorage.getItem(AUDIO_STORAGE_KEY);
-    if (!saved) return 0;
-    const idx = Number(saved);
-    return idx < groups.length ? idx : 0;
+  const [playerPrefs, setPlayerPrefs] = useState<{
+    autoPlay: boolean;
+    defaultQuality: PreferredQuality;
+    defaultDubLanguage: PreferredDubLanguage;
+  }>(() => {
+    if (typeof window === "undefined") {
+      return { autoPlay: true, defaultQuality: "auto", defaultDubLanguage: "ja" };
+    }
+
+    try {
+      const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
+      if (!stored) {
+        return { autoPlay: true, defaultQuality: "auto", defaultDubLanguage: "ja" };
+      }
+
+      const parsed = JSON.parse(stored) as Record<string, unknown>;
+      return {
+        autoPlay: typeof parsed.autoPlay === "boolean" ? parsed.autoPlay : true,
+        defaultQuality: parsed.defaultQuality === "2160p" || parsed.defaultQuality === "1440p" || parsed.defaultQuality === "1080p" || parsed.defaultQuality === "720p" || parsed.defaultQuality === "480p" || parsed.defaultQuality === "auto"
+          ? parsed.defaultQuality
+          : "auto",
+        defaultDubLanguage: parsed.defaultDubLanguage === "en" || parsed.defaultDubLanguage === "tr" || parsed.defaultDubLanguage === "ja"
+          ? parsed.defaultDubLanguage
+          : "ja",
+      };
+    } catch {
+      return { autoPlay: true, defaultQuality: "auto", defaultDubLanguage: "ja" };
+    }
   });
-  const [activeIdx, setActiveIdx] = useState(0);
+
+  const [selectedAudio, setSelectedAudio] = useState(() => getInitialAudioTrackIndex(audioTracks, playerPrefs.defaultDubLanguage));
+  const [selectedQualityIdx, setSelectedQualityIdx] = useState(() => {
+    const initialTrack = audioTracks[getInitialAudioTrackIndex(audioTracks, playerPrefs.defaultDubLanguage)];
+    return getInitialQualityIndex(initialTrack?.variants ?? [], playerPrefs.defaultQuality);
+  });
   const [volume, setVolume] = useState(() => {
     if (typeof window === "undefined") return 1;
     const saved = localStorage.getItem(VOLUME_STORAGE_KEY);
     return saved ? Number(saved) : 1;
   });
+  const activeAudio = useMemo(() => {
+    if (selectedAudio >= 0 && selectedAudio < audioTracks.length) return selectedAudio;
+
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(AUDIO_STORAGE_KEY);
+      const savedIndex = saved == null ? Number.NaN : Number(saved);
+      if (Number.isInteger(savedIndex) && savedIndex >= 0 && savedIndex < audioTracks.length) {
+        return savedIndex;
+      }
+    }
+
+    return getInitialAudioTrackIndex(audioTracks, playerPrefs.defaultDubLanguage);
+  }, [audioTracks, playerPrefs.defaultDubLanguage, selectedAudio]);
+
   const currentTrack = audioTracks[activeAudio];
+  const activeIdx = useMemo(() => {
+    const variants = currentTrack?.variants ?? [];
+    if (variants.length === 0) return 0;
+    if (selectedQualityIdx >= 0 && selectedQualityIdx < variants.length) return selectedQualityIdx;
+    return getInitialQualityIndex(variants, playerPrefs.defaultQuality);
+  }, [currentTrack, playerPrefs.defaultQuality, selectedQualityIdx]);
   const active = currentTrack?.variants[activeIdx];
   const resumeFromRef = useRef<number | null>(null);
   const { settings, update: updateCaption, reset: resetCaption } = useCaptionSettings();
@@ -216,6 +316,31 @@ export function AnimePlayer({
   }, [subtitles]);
 
   // Resume handling — also preserves time on quality switches.
+  useEffect(() => {
+    const syncPrefs = () => {
+      try {
+        const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
+        if (!stored) return;
+        const parsed = JSON.parse(stored) as Record<string, unknown>;
+        setPlayerPrefs({
+          autoPlay: typeof parsed.autoPlay === "boolean" ? parsed.autoPlay : true,
+          defaultQuality: parsed.defaultQuality === "2160p" || parsed.defaultQuality === "1440p" || parsed.defaultQuality === "1080p" || parsed.defaultQuality === "720p" || parsed.defaultQuality === "480p" || parsed.defaultQuality === "auto"
+            ? parsed.defaultQuality
+            : "auto",
+          defaultDubLanguage: parsed.defaultDubLanguage === "en" || parsed.defaultDubLanguage === "tr" || parsed.defaultDubLanguage === "ja"
+            ? parsed.defaultDubLanguage
+            : "ja",
+        });
+      } catch {
+        // ignore invalid storage
+      }
+    };
+
+    syncPrefs();
+    window.addEventListener("storage", syncPrefs);
+    return () => window.removeEventListener("storage", syncPrefs);
+  }, []);
+
   useEffect(() => {
     seededRef.current = false;
   }, [active?.url]);
@@ -315,7 +440,7 @@ export function AnimePlayer({
     cancelOutroAutoAdvance();
     const p = playerRef.current;
     if (p) resumeFromRef.current = p.currentTime;
-    setActiveIdx(idx);
+    setSelectedQualityIdx(idx);
   }
 
   function changeAudio(idx: number) {
@@ -331,8 +456,8 @@ export function AnimePlayer({
       if (match >= 0) nextQIdx = match;
     }
     localStorage.setItem(AUDIO_STORAGE_KEY, String(idx));
-    setActiveAudio(idx);
-    setActiveIdx(nextQIdx);
+    setSelectedAudio(idx);
+    setSelectedQualityIdx(nextQIdx);
   }
 
   function onCanPlay() {

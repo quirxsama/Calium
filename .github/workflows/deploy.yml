@@ -32,6 +32,9 @@ jobs:
             # Apply any pending database migrations
             /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npx prisma migrate deploy
 
+            # Push database changes
+            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npx prisma db push
+
             # Build
             /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npm run build
 

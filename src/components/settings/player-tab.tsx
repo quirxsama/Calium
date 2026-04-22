@@ -4,38 +4,84 @@ import { useState, useEffect } from "react";
 import { Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const DUB_LANGUAGES = [
+  { value: "en", label: "İngilizce" },
+  { value: "tr", label: "Türkçe" },
+  { value: "ja", label: "Japonca" },
+] as const;
+
 const QUALITIES = [
   { value: "auto", label: "Otomatik" },
+  { value: "2160p", label: "2160p" },
+  { value: "1440p", label: "1440p" },
   { value: "1080p", label: "1080p" },
   { value: "720p", label: "720p" },
   { value: "480p", label: "480p" },
-  { value: "360p", label: "360p" },
 ];
 
 export function PlayerTab() {
   const [autoPlay, setAutoPlay] = useState(true);
   const [defaultQuality, setDefaultQuality] = useState("auto");
+  const [defaultDubLanguage, setDefaultDubLanguage] = useState("ja");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("calium:player-prefs");
-    if (stored) {
+    let cancelled = false;
+
+    const hydrate = async () => {
+      const stored = localStorage.getItem("calium:player-prefs");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (!cancelled) {
+            queueMicrotask(() => {
+              if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
+              if (typeof parsed.defaultQuality === "string") setDefaultQuality(parsed.defaultQuality);
+              if (typeof parsed.defaultDubLanguage === "string") setDefaultDubLanguage(parsed.defaultDubLanguage);
+            });
+          }
+        } catch {
+          // ignore broken local storage
+        }
+      }
+
       try {
-        const parsed = JSON.parse(stored);
+        const res = await fetch("/api/preferences", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const preferences = data?.preferences;
+        if (cancelled || !preferences) return;
+
+        const nextPrefs = {
+          autoPlay: typeof preferences.autoPlay === "boolean" ? preferences.autoPlay : true,
+          defaultQuality: typeof preferences.defaultQuality === "string" ? preferences.defaultQuality : "auto",
+          defaultDubLanguage: typeof preferences.defaultDubLanguage === "string" ? preferences.defaultDubLanguage : "ja",
+        };
+
         queueMicrotask(() => {
-          if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
-          if (typeof parsed.defaultQuality === "string") setDefaultQuality(parsed.defaultQuality);
+          setAutoPlay(nextPrefs.autoPlay);
+          setDefaultQuality(nextPrefs.defaultQuality);
+          setDefaultDubLanguage(nextPrefs.defaultDubLanguage);
         });
-      } catch { /* ignore */ }
-    }
+        localStorage.setItem("calium:player-prefs", JSON.stringify(nextPrefs));
+      } catch {
+        // sync best-effort
+      }
+    };
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleSave() {
     setLoading(true);
     setMessage(null);
 
-    const prefs = { autoPlay, defaultQuality };
+    const prefs = { autoPlay, defaultQuality, defaultDubLanguage };
     localStorage.setItem("calium:player-prefs", JSON.stringify(prefs));
 
     try {
@@ -81,6 +127,27 @@ export function PlayerTab() {
               autoPlay ? "translate-x-4" : "translate-x-0.5"
             )} />
           </button>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm font-medium text-[var(--foreground)]">Varsayılan Dublaj Dili</p>
+          <div className="flex flex-wrap gap-2">
+            {DUB_LANGUAGES.map((language) => (
+              <button
+                key={language.value}
+                onClick={() => setDefaultDubLanguage(language.value)}
+                className={cn(
+                  "rounded-lg border px-3 py-1.5 text-sm transition",
+                  defaultDubLanguage === language.value
+                    ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)] font-medium"
+                    : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                )}
+              >
+                {language.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-[var(--muted-foreground)]">Seçilen dil yoksa oynatıcı otomatik olarak Japonca dublaja döner.</p>
         </div>
 
         <div>
