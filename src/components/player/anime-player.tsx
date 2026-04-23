@@ -10,7 +10,6 @@ import {
   useState,
   type MutableRefObject,
   type ReactNode,
-  type TouchEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -196,6 +195,7 @@ export function AnimePlayer({
   const outroStartRef = useRef<number | null>(null);
   const fullscreenResumePendingRef = useRef(false);
   const autoplayResumePendingRef = useRef(false);
+  const suppressNextControlsShowRef = useRef(false);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
   const [outroProgress, setOutroProgress] = useState(0);
@@ -536,6 +536,13 @@ export function AnimePlayer({
   const outroBarStyle = useMemo(() => ({ transform: `scaleX(${outroProgress})` }), [outroProgress]);
 
   const showOverlayControls = useCallback(() => {
+    if (suppressNextControlsShowRef.current) {
+      suppressNextControlsShowRef.current = false;
+      return;
+    }
+
+    const player = playerRef.current;
+    player?.controls.show(0);
     setControlsVisible(true);
     onControlsVisibilityChange?.(true);
 
@@ -551,6 +558,8 @@ export function AnimePlayer({
   }, [onControlsVisibilityChange]);
 
   const hideOverlayControls = useCallback(() => {
+    const player = playerRef.current;
+    player?.controls.hide(0);
     if (overlayControlsTimerRef.current) {
       window.clearTimeout(overlayControlsTimerRef.current);
       overlayControlsTimerRef.current = null;
@@ -560,34 +569,58 @@ export function AnimePlayer({
     onControlsVisibilityChange?.(false);
   }, [onControlsVisibilityChange]);
 
-  const handleTouchStart = useCallback(
-    (event: TouchEvent<HTMLDivElement>) => {
-      const target = event.target as HTMLElement | null;
-      const insideInteractiveTarget = Boolean(
-        target?.closest(
-          'button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a'
-        )
-      );
+  const isInteractiveTouchTarget = useCallback((target: EventTarget | null) => {
+    const element = target as HTMLElement | null;
+    return Boolean(
+      element?.closest('button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a')
+    );
+  }, []);
 
-      if (!isTouchDevice) {
-        showOverlayControls();
-        return;
-      }
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p) return;
 
-      if (insideInteractiveTarget) {
-        showOverlayControls();
+    const el = p.el;
+    if (!el || !isTouchDevice) return;
+
+    const handleTouchEndCapture = (event: globalThis.TouchEvent) => {
+      if (isInteractiveTouchTarget(event.target)) {
         return;
       }
 
       if (controlsVisible) {
+        suppressNextControlsShowRef.current = true;
+        event.stopPropagation();
         hideOverlayControls();
         return;
       }
 
       showOverlayControls();
-    },
-    [controlsVisible, hideOverlayControls, isTouchDevice, showOverlayControls]
-  );
+    };
+
+    el.addEventListener("touchend", handleTouchEndCapture, { passive: true, capture: true });
+
+    return () => {
+      el.removeEventListener("touchend", handleTouchEndCapture, true);
+    };
+  }, [controlsVisible, hideOverlayControls, isInteractiveTouchTarget, isTouchDevice, showOverlayControls]);
+
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p) return;
+
+    const syncControlsVisibility = (event: Event) => {
+      const visible = Boolean((event as CustomEvent<boolean>).detail);
+      setControlsVisible(visible);
+      onControlsVisibilityChange?.(visible);
+    };
+
+    p.el?.addEventListener("controls-change", syncControlsVisibility);
+
+    return () => {
+      p.el?.removeEventListener("controls-change", syncControlsVisibility);
+    };
+  }, [active?.url, onControlsVisibilityChange]);
 
 
 
@@ -803,7 +836,6 @@ export function AnimePlayer({
       style={cueStyle}
       onMouseMove={showOverlayControls}
       onMouseEnter={showOverlayControls}
-      onTouchStart={handleTouchStart}
       onMouseLeave={hideOverlayControls}
     >
       <MediaPlayer
