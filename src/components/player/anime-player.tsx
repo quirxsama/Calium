@@ -195,7 +195,6 @@ export function AnimePlayer({
   const outroStartRef = useRef<number | null>(null);
   const fullscreenResumePendingRef = useRef(false);
   const autoplayResumePendingRef = useRef(false);
-  const suppressNextControlsShowRef = useRef(false);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
   const [outroProgress, setOutroProgress] = useState(0);
@@ -536,11 +535,6 @@ export function AnimePlayer({
   const outroBarStyle = useMemo(() => ({ transform: `scaleX(${outroProgress})` }), [outroProgress]);
 
   const showOverlayControls = useCallback(() => {
-    if (suppressNextControlsShowRef.current) {
-      suppressNextControlsShowRef.current = false;
-      return;
-    }
-
     const player = playerRef.current;
     player?.controls.show(0);
     setControlsVisible(true);
@@ -575,35 +569,6 @@ export function AnimePlayer({
       element?.closest('button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a')
     );
   }, []);
-
-  useEffect(() => {
-    const p = playerRef.current;
-    if (!p) return;
-
-    const el = p.el;
-    if (!el || !isTouchDevice) return;
-
-    const handleTouchEndCapture = (event: globalThis.TouchEvent) => {
-      if (isInteractiveTouchTarget(event.target)) {
-        return;
-      }
-
-      if (controlsVisible) {
-        suppressNextControlsShowRef.current = true;
-        event.stopPropagation();
-        hideOverlayControls();
-        return;
-      }
-
-      showOverlayControls();
-    };
-
-    el.addEventListener("touchend", handleTouchEndCapture, { passive: true, capture: true });
-
-    return () => {
-      el.removeEventListener("touchend", handleTouchEndCapture, true);
-    };
-  }, [controlsVisible, hideOverlayControls, isInteractiveTouchTarget, isTouchDevice, showOverlayControls]);
 
   useEffect(() => {
     const p = playerRef.current;
@@ -964,7 +929,19 @@ export function AnimePlayer({
             </span>
           </button>
         )}
-        <MobileSeekOverlay playerRef={playerRef} />
+        <MobileSeekOverlay
+          playerRef={playerRef}
+          controlsVisible={controlsVisible}
+          onSingleTap={() => {
+            if (controlsVisible) {
+              hideOverlayControls();
+              return;
+            }
+
+            showOverlayControls();
+          }}
+          isInteractiveTarget={isInteractiveTouchTarget}
+        />
         <GestureHint />
       </MediaPlayer>
     </div>

@@ -4,7 +4,7 @@ import type { MediaPlayerInstance } from "@vidstack/react";
 import { cn } from "@/lib/utils";
 
 const SEEK_SECONDS = 10;
-const DOUBLE_TAP_MS = 600;
+const DOUBLE_TAP_MS = 450;
 
 type RippleState = {
   side: "left" | "right";
@@ -14,15 +14,20 @@ type RippleState = {
 
 type Props = {
   playerRef: React.RefObject<MediaPlayerInstance | null>;
+  controlsVisible: boolean;
+  onSingleTap: () => void;
+  isInteractiveTarget: (target: EventTarget | null) => boolean;
 };
 
-export function MobileSeekOverlay({ playerRef }: Props) {
+export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isInteractiveTarget }: Props) {
   const lastTapRef = useRef<{ time: number; side: "left" | "right" } | null>(null);
   const accumulatedRef = useRef(0);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ripple, setRipple] = useState<RippleState | null>(null);
   const keyRef = useRef(0);
   const suppressNativeDoubleTapRef = useRef(false);
+  const suppressNativeTapUntilRef = useRef(0);
 
   const handleSeek = useCallback(
     (side: "left" | "right") => {
@@ -60,12 +65,7 @@ export function MobileSeekOverlay({ playerRef }: Props) {
 
     const onTouch = (e: TouchEvent) => {
       // Don't intercept taps on interactive controls
-      const target = e.target as HTMLElement;
-      if (
-        target?.closest(
-          'button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a, .vds-controls, .vds-menu'
-        )
-      ) {
+      if (isInteractiveTarget(e.target)) {
         return;
       }
 
@@ -79,17 +79,36 @@ export function MobileSeekOverlay({ playerRef }: Props) {
       const last = lastTapRef.current;
 
       if (last && last.side === side && now - last.time < DOUBLE_TAP_MS) {
-        // Double tap — seek
+        if (singleTapTimerRef.current) {
+          clearTimeout(singleTapTimerRef.current);
+          singleTapTimerRef.current = null;
+        }
+
         lastTapRef.current = null;
         suppressNativeDoubleTapRef.current = true;
+        suppressNativeTapUntilRef.current = Date.now() + DOUBLE_TAP_MS;
+        e.preventDefault();
+        e.stopPropagation();
         handleSeek(side);
 
         window.setTimeout(() => {
           suppressNativeDoubleTapRef.current = false;
         }, DOUBLE_TAP_MS);
       } else {
-        // First tap — just record; let Vidstack handle it natively
         lastTapRef.current = { time: now, side };
+
+        if (singleTapTimerRef.current) {
+          clearTimeout(singleTapTimerRef.current);
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        suppressNativeTapUntilRef.current = Date.now() + DOUBLE_TAP_MS;
+        singleTapTimerRef.current = setTimeout(() => {
+          lastTapRef.current = null;
+          singleTapTimerRef.current = null;
+          onSingleTap();
+        }, DOUBLE_TAP_MS);
       }
     };
 
@@ -109,14 +128,30 @@ export function MobileSeekOverlay({ playerRef }: Props) {
       e.stopPropagation();
     };
 
-    el.addEventListener("touchend", onTouch, { passive: true });
+    const onPointerLike = (e: Event) => {
+      if (Date.now() > suppressNativeTapUntilRef.current) return;
+      if (isInteractiveTarget(e.target)) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if ("stopImmediatePropagation" in e && typeof e.stopImmediatePropagation === "function") {
+        e.stopImmediatePropagation();
+      }
+    };
+
+    el.addEventListener("touchend", onTouch, { passive: false, capture: true });
+    el.addEventListener("click", onPointerLike, true);
+    el.addEventListener("pointerup", onPointerLike, true);
     el.addEventListener("dblclick", onDoubleClick, true);
 
     return () => {
-      el.removeEventListener("touchend", onTouch);
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      el.removeEventListener("touchend", onTouch, true);
+      el.removeEventListener("click", onPointerLike, true);
+      el.removeEventListener("pointerup", onPointerLike, true);
       el.removeEventListener("dblclick", onDoubleClick, true);
     };
-  }, [playerRef, handleSeek]);
+  }, [controlsVisible, handleSeek, isInteractiveTarget, onSingleTap, playerRef]);
 
   return (
     <div className="absolute inset-0 z-20 flex pointer-events-none">
