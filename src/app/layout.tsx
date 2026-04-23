@@ -7,6 +7,9 @@ import { Footer } from "@/components/layout/footer";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { RealtimeProvider } from "@/components/realtime/realtime-provider";
 import { InviteToast } from "@/components/social/invite-toast";
+import { getSiteUrl } from "@/lib/site-url";
+
+const siteUrl = getSiteUrl();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,6 +41,7 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "Calium — Ücretsiz Anime İzleme Platformu",
   description:
     "Calium: Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
