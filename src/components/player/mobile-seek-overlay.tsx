@@ -4,7 +4,7 @@ import type { MediaPlayerInstance } from "@vidstack/react";
 import { cn } from "@/lib/utils";
 
 const SEEK_SECONDS = 10;
-const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_MS = 420;
 
 type RippleState = {
   side: "left" | "right";
