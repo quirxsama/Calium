@@ -10,8 +10,79 @@ import { AnimePosterFlip } from "@/components/anime/anime-poster-flip";
 import { CastSection } from "@/components/anime/cast-section";
 import { RecommendedAnime } from "@/components/anime/recommended-anime";
 import { Play, Star, Calendar } from "lucide-react";
+import { GENRES } from "@/lib/anizium/constants";
 import { formatAnimeType } from "@/lib/utils";
 import type { Metadata } from "next";
+import { absoluteUrl, buildBreadcrumbJsonLd, SITE_NAME } from "@/lib/seo";
+
+function normalizeText(value: string | null | undefined, fallback: string) {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : fallback;
+}
+
+function getAnimeTypeLabel(type: string | null | undefined) {
+  return normalizeText(formatAnimeType(type ?? "Anime"), "Anime");
+}
+
+function getGenreHref(name: string) {
+  const matchedGenre = GENRES.find((genre) => genre.name === name);
+
+  if (matchedGenre) {
+    return `/tur/${matchedGenre.slug}`;
+  }
+
+  return "/kesfet";
+}
+
+function truncateAtWordBoundary(text: string, maxLength: number) {
+  if (text.length <= maxLength) return text;
+
+  const sliced = text.slice(0, maxLength + 1);
+  const lastSpaceIndex = sliced.lastIndexOf(" ");
+
+  if (lastSpaceIndex < maxLength * 0.6) {
+    return `${text.slice(0, maxLength).trim()}…`;
+  }
+
+  return `${sliced.slice(0, lastSpaceIndex).trim()}…`;
+}
+
+function buildAnimeDescription(details: {
+  name: string;
+  overview?: string | null;
+  type?: string | null;
+  release_year?: string | number | null;
+  genre?: Array<{ name: string }>;
+}) {
+  const genreText = (details.genre ?? [])
+    .map((genre) => genre.name)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(", ");
+  const typeText = getAnimeTypeLabel(details.type);
+  const introParts = [
+    details.name,
+    details.release_year ? `${details.release_year} yapımı` : null,
+    `bir ${typeText.toLowerCase()}`,
+  ].filter(Boolean);
+  const summary = normalizeText(
+    details.overview,
+    `${details.name} hakkında detaylar, bölümler ve izleme bilgileri ${SITE_NAME}'da seni bekliyor.`
+  );
+
+  return truncateAtWordBoundary(
+    [
+      `${introParts.join(" ")}.${genreText ? ` Öne çıkan türleri: ${genreText}.` : ""}`,
+      summary,
+    ]
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim(),
+    300
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export const revalidate = 3600;
 
@@ -23,12 +94,45 @@ export async function generateMetadata({
   const { id } = await params;
   try {
     const res = await getAnimeDetails(id);
+    const details = res.data;
+    const description = buildAnimeDescription(details);
+    const title = `${details.name} izle | Konusu, bölümleri ve detayları | ${SITE_NAME}`;
+    const canonicalPath = `/anime/${encodeURIComponent(id)}`;
+    const image = details.poster ?? details.details_banner ?? details.banner ?? "/icon.webp";
+
     return {
-      title: `${res.data.name} — Calium`,
-      description: res.data.overview ?? undefined,
+      title,
+      description,
+      keywords: [
+        details.name,
+        `${details.name} izle`,
+        `${details.name} konusu`,
+        `${details.name} bölümleri`,
+        ...(details.genre ?? []).map((genre) => genre.name),
+      ],
+      alternates: {
+        canonical: canonicalPath,
+      },
+      openGraph: {
+        type: "website",
+        url: canonicalPath,
+        title,
+        description,
+        siteName: SITE_NAME,
+        images: [{ url: image, alt: details.name }],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: [image],
+      },
     };
   } catch {
-    return { title: "Anime — Calium" };
+    return {
+      title: `Anime izle | ${SITE_NAME}`,
+      description: `${SITE_NAME} üzerinde anime detayları, bölümler ve izleme seçeneklerini keşfet.`,
+    };
   }
 }
 
@@ -67,9 +171,47 @@ export default async function AnimeDetailPage({
   const firstEp = details.seasons?.[0]?.episodes?.[0];
   const isMovie = details.type && ["movie", "film"].includes(details.type.toLowerCase().trim());
   const rating = details.imdb_point ? Number(details.imdb_point) : null;
+  const genres = details.genre ?? [];
+  const genreLinks = genres.slice(0, 3);
+  const typeLabel = getAnimeTypeLabel(details.type);
+  const description = buildAnimeDescription(details);
+  const animeUrl = absoluteUrl(`/anime/${encodeURIComponent(details.ID)}`);
+  const imageUrl = details.poster ?? details.details_banner ?? details.banner ?? absoluteUrl("/icon.webp");
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Ana Sayfa", path: "/" },
+    { name: "Animeler", path: "/kesfet" },
+    { name: details.name, path: `/anime/${encodeURIComponent(details.ID)}` },
+  ]);
+  const animeJsonLd = {
+    "@context": "https://schema.org",
+    "@type": isMovie ? "Movie" : "TVSeries",
+    name: details.name,
+    url: animeUrl,
+    description,
+    image: [imageUrl],
+    genre: genres.map((genre) => genre.name),
+    datePublished: details.release_year ? String(details.release_year) : undefined,
+    aggregateRating:
+      rating && rating > 0
+        ? {
+            "@type": "AggregateRating",
+            ratingValue: rating.toFixed(1),
+            bestRating: "10",
+            worstRating: "0",
+          }
+        : undefined,
+  };
 
   return (
     <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(animeJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       {/* Banner */}
       <div className="relative h-[55vh] min-h-[360px] w-full overflow-hidden">
         {details.details_banner ? (
@@ -140,7 +282,7 @@ export default async function AnimeDetailPage({
             )}
 
             {details.overview && (
-              <p className="mt-4 text-sm md:text-base text-[var(--muted-foreground)] max-w-3xl leading-relaxed">
+              <p className="mt-4 max-w-3xl text-sm leading-relaxed text-[var(--muted-foreground)] md:text-base">
                 {details.overview}
               </p>
             )}
@@ -214,6 +356,26 @@ export default async function AnimeDetailPage({
             <h2 className="text-2xl font-bold mb-4">Bölümler</h2>
             <SeasonTabs animeId={details.ID} seasons={details.seasons ?? []} />
 
+            {genreLinks.length > 0 && (
+              <section className="mt-8 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5">
+                <h2 className="text-xl font-bold tracking-tight md:text-2xl">Benzer tatta ne izlenebilir?</h2>
+                <p className="mt-3 text-sm leading-7 text-[var(--muted-foreground)] md:text-base">
+                  Eğer {details.name} hoşuna gittiyse aşağıdaki tür sayfalarından benzer yapımları keşfedebilirsin.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {genreLinks.map((genre) => (
+                    <Link
+                      key={genre.ID}
+                      href={getGenreHref(genre.name)}
+                      className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                    >
+                      {genre.name} animeleri
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <RecommendedAnime
               items={similar?.page?.data ?? []}
               title="Bu animeyi izlediysen bunları da beğenebilirsin"
@@ -222,10 +384,32 @@ export default async function AnimeDetailPage({
         )}
 
         {(details.seasons ?? []).length === 0 && (
-          <RecommendedAnime
-            items={similar?.page?.data ?? []}
-            title="Bu animeyi izlediysen bunları da beğenebilirsin"
-          />
+          <>
+            {genreLinks.length > 0 && (
+              <section className="mt-8 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5">
+                <h2 className="text-xl font-bold tracking-tight md:text-2xl">Benzer tatta ne izlenebilir?</h2>
+                <p className="mt-3 text-sm leading-7 text-[var(--muted-foreground)] md:text-base">
+                  Eğer {details.name} hoşuna gittiyse aşağıdaki tür sayfalarından benzer yapımları keşfedebilirsin.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {genreLinks.map((genre) => (
+                    <Link
+                      key={genre.ID}
+                      href={getGenreHref(genre.name)}
+                      className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                    >
+                      {genre.name} animeleri
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <RecommendedAnime
+              items={similar?.page?.data ?? []}
+              title="Bu animeyi izlediysen bunları da beğenebilirsin"
+            />
+          </>
         )}
       </div>
     </div>

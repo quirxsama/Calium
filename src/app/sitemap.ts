@@ -4,16 +4,12 @@ import {
   getLatestEpisodes,
   getTop,
 } from "@/lib/anizium/endpoints";
+import { GENRES } from "@/lib/anizium/constants";
 import { getSiteUrl } from "@/lib/site-url";
 
 const publicRoutes = [
   "",
-  "/arama",
-  "/arkadaslar/public-odalar",
   "/dublaj",
-  "/giris",
-  "/iletisim",
-  "/kayit",
   "/kesfet",
   "/top",
 ] as const;
@@ -58,8 +54,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getSiteUrl();
   const lastModified = new Date();
   const animeRoutes = await getAnimeDetailRoutes();
+  const genreRoutes = GENRES.map((genre) => `/tur/${genre.slug}`);
 
-  const routes = [...publicRoutes, ...animeRoutes];
+  const routes = [...publicRoutes, ...genreRoutes, ...animeRoutes];
 
   return routes.map((route) => ({
     url: `${siteUrl}${route}`,

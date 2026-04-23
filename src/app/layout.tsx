@@ -8,8 +8,33 @@ import { MobileNav } from "@/components/layout/mobile-nav";
 import { RealtimeProvider } from "@/components/realtime/realtime-provider";
 import { InviteToast } from "@/components/social/invite-toast";
 import { getSiteUrl } from "@/lib/site-url";
+import {
+  absoluteUrl,
+  SAME_AS_LINKS,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+} from "@/lib/seo";
 
 const siteUrl = getSiteUrl();
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE_NAME,
+  alternateName: SITE_TITLE,
+  url: siteUrl,
+  description: SITE_DESCRIPTION,
+  inLanguage: "tr-TR",
+};
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: SITE_NAME,
+  url: siteUrl,
+  logo: absoluteUrl("/icon.webp"),
+  ...(SAME_AS_LINKS.length > 0 ? { sameAs: SAME_AS_LINKS } : {}),
+};
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,11 +67,35 @@ const nunito = Nunito({
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Calium — Ücretsiz Anime İzleme Platformu",
-  description:
-    "Calium: Binlerce anime ve filmi Türkçe altyazı ve dublaj ile ücretsiz izle.",
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   keywords: ["anime", "anime izle", "türkçe altyazılı anime", "türkçe dublaj anime", "calium"],
   manifest: "/manifest.json",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "tr_TR",
+    url: siteUrl,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    siteName: SITE_NAME,
+    images: [
+      {
+        url: "/icon.webp",
+        width: 512,
+        height: 512,
+        alt: SITE_NAME,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: ["/icon.webp"],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -88,6 +137,14 @@ export default function RootLayout({
       <link rel="preconnect" href="https://x.anizium.co" crossOrigin="anonymous" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
         <Providers>
           <RealtimeProvider />
           <InviteToast />

@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { getCatalog, type CatalogKind } from "@/lib/anizium/endpoints";
 import { fetchPagedCatalog } from "@/lib/anizium/paginate";
@@ -6,6 +7,7 @@ import { AnimeGrid, AnimeGridSkeleton } from "@/components/anime/anime-grid";
 import { Pagination } from "@/components/ui/pagination";
 import { GENRES } from "@/lib/anizium/constants";
 import { Suspense } from "react";
+import { GenreDropdown } from "@/components/discovery/genre-dropdown";
 
 export const revalidate = 1800;
 
@@ -61,7 +63,7 @@ export default async function KesfetPage({
         </p>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2 mb-6">
+      <div className="mb-6 flex flex-wrap items-center gap-2">
         {(["series", "movie", "trdub"] as CatalogKind[]).map((k) => (
           <Link
             key={k}
@@ -76,19 +78,7 @@ export default async function KesfetPage({
           </Link>
         ))}
         <div className="mx-2 h-6 w-px bg-[var(--border)]" />
-        {GENRES.map((g) => (
-          <Link
-            key={g.id}
-            href={`/kesfet?kind=genre&id=${g.id}`}
-            className={`rounded-full border px-3 py-1.5 text-xs transition ${
-              id === g.id
-                ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]"
-            }`}
-          >
-            {g.name}
-          </Link>
-        ))}
+        <GenreDropdown activeGenreId={id} />
       </div>
 
       <Suspense fallback={<AnimeGridSkeleton />}>
