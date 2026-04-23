@@ -2,7 +2,16 @@
 import "@vidstack/react/player/styles/default/theme.css";
 import "@vidstack/react/player/styles/default/layouts/video.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+  type TouchEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   MediaPlayer,
@@ -551,6 +560,35 @@ export function AnimePlayer({
     onControlsVisibilityChange?.(false);
   }, [onControlsVisibilityChange]);
 
+  const handleTouchStart = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      const insideInteractiveTarget = Boolean(
+        target?.closest(
+          'button, [role="button"], [role="slider"], [role="menuitem"], [role="menu"], input, a'
+        )
+      );
+
+      if (!isTouchDevice) {
+        showOverlayControls();
+        return;
+      }
+
+      if (insideInteractiveTarget) {
+        showOverlayControls();
+        return;
+      }
+
+      if (controlsVisible) {
+        hideOverlayControls();
+        return;
+      }
+
+      showOverlayControls();
+    },
+    [controlsVisible, hideOverlayControls, isTouchDevice, showOverlayControls]
+  );
+
 
 
   // Klavye kontrollerini kilitle ve odak yönetimini sağla
@@ -765,7 +803,7 @@ export function AnimePlayer({
       style={cueStyle}
       onMouseMove={showOverlayControls}
       onMouseEnter={showOverlayControls}
-      onTouchStart={showOverlayControls}
+      onTouchStart={handleTouchStart}
       onMouseLeave={hideOverlayControls}
     >
       <MediaPlayer
