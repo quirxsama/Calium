@@ -534,23 +534,6 @@ export function AnimePlayer({
 
   const outroBarStyle = useMemo(() => ({ transform: `scaleX(${outroProgress})` }), [outroProgress]);
 
-  const showOverlayControls = useCallback(() => {
-    const player = playerRef.current;
-    player?.controls.show(0);
-    setControlsVisible(true);
-    onControlsVisibilityChange?.(true);
-
-    if (overlayControlsTimerRef.current) {
-      window.clearTimeout(overlayControlsTimerRef.current);
-    }
-
-    overlayControlsTimerRef.current = window.setTimeout(() => {
-      setControlsVisible(false);
-      onControlsVisibilityChange?.(false);
-      overlayControlsTimerRef.current = null;
-    }, 2200);
-  }, [onControlsVisibilityChange]);
-
   const hideOverlayControls = useCallback(() => {
     const player = playerRef.current;
     player?.controls.hide(0);
@@ -562,6 +545,28 @@ export function AnimePlayer({
     setControlsVisible(false);
     onControlsVisibilityChange?.(false);
   }, [onControlsVisibilityChange]);
+
+  const showOverlayControls = useCallback(() => {
+    const player = playerRef.current;
+    player?.controls.show(0);
+    setControlsVisible(true);
+    onControlsVisibilityChange?.(true);
+
+    if (overlayControlsTimerRef.current) {
+      window.clearTimeout(overlayControlsTimerRef.current);
+    }
+
+    overlayControlsTimerRef.current = window.setTimeout(() => {
+      const isPaused = playerRef.current?.paused ?? false;
+
+      if (!isPaused) {
+        hideOverlayControls();
+        return;
+      }
+
+      overlayControlsTimerRef.current = null;
+    }, 2200);
+  }, [hideOverlayControls, onControlsVisibilityChange]);
 
   const isInteractiveTouchTarget = useCallback((target: EventTarget | null) => {
     const element = target as HTMLElement | null;
