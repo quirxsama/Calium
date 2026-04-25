@@ -10,7 +10,7 @@ import type {
   SourceGroup,
   SubtitleData,
 } from "@/lib/anizium/schemas";
-import { upsertHistory, getHistoryEntry } from "@/lib/storage/history";
+import { upsertHistory, getHistoryEntry, isEpisodeFinished } from "@/lib/storage/history";
 import { usePublishActivity } from "@/lib/realtime/presence";
 import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
 import { cn, formatDuration, parseTimeCode } from "@/lib/utils";
@@ -39,6 +39,54 @@ type SourcesState =
       content: SourceContent | null;
     };
 
+function getNextEpisode(
+  details: AnimeDetails,
+  episodeId: string,
+  isMovie: boolean
+): {
+  currentSeason: AnimeDetails["seasons"][number] | null;
+  currentEp: EpisodeData | null;
+  nextEp: { seasonId: string; ep: EpisodeData } | null;
+  prevEp: { seasonId: string; ep: EpisodeData } | null;
+} {
+  let curSeason = null as AnimeDetails["seasons"][number] | null;
+  let curEp = null as EpisodeData | null;
+  let nxt = null as { seasonId: string; ep: EpisodeData } | null;
+  let prv = null as { seasonId: string; ep: EpisodeData } | null;
+  const seasons = details.seasons ?? [];
+
+  // Film: sezon verisi yoksa sanal sezon/bölüm oluştur
+  if (isMovie && seasons.length === 0) {
+    return {
+      currentSeason: { ID: "film", name: details.name, number: 1, episodes: [] as EpisodeData[] },
+      currentEp: { ID: "film", name: details.name, number: 1, overview: details.overview ?? null, banner_link: null } as EpisodeData,
+      nextEp: null,
+      prevEp: null,
+    };
+  }
+
+  for (let i = 0; i < seasons.length; i++) {
+    const s = seasons[i];
+    const idx = s.episodes.findIndex((e) => e.ID === episodeId);
+    if (idx >= 0) {
+      curSeason = s;
+      curEp = s.episodes[idx];
+      if (idx + 1 < s.episodes.length) {
+        nxt = { seasonId: s.ID, ep: s.episodes[idx + 1] };
+      } else if (i + 1 < seasons.length && seasons[i + 1].episodes.length) {
+        nxt = { seasonId: seasons[i + 1].ID, ep: seasons[i + 1].episodes[0] };
+      }
+      if (idx - 1 >= 0) {
+        prv = { seasonId: s.ID, ep: s.episodes[idx - 1] };
+      } else if (i - 1 >= 0 && seasons[i - 1].episodes.length) {
+        prv = { seasonId: seasons[i - 1].ID, ep: seasons[i - 1].episodes[seasons[i - 1].episodes.length - 1] };
+      }
+      break;
+    }
+  }
+  return { currentSeason: curSeason, currentEp: curEp, nextEp: nxt, prevEp: prv };
+}
+
 export function WatchPageClient({ details, episodeId }: Props) {
   const router = useRouter();
   const [state, setState] = useState<SourcesState>({ status: "loading" });
@@ -47,42 +95,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
   const isMovie = episodeId === "film";
 
   const { currentSeason, currentEp, nextEp, prevEp } = useMemo(() => {
-    let curSeason = null as (typeof details.seasons)[number] | null;
-    let curEp = null as EpisodeData | null;
-    let nxt = null as { seasonId: string; ep: EpisodeData } | null;
-    let prv = null as { seasonId: string; ep: EpisodeData } | null;
-    const seasons = details.seasons ?? [];
-
-    // Film: sezon verisi yoksa sanal sezon/bölüm oluştur
-    if (isMovie && seasons.length === 0) {
-      return {
-        currentSeason: { ID: "film", name: details.name, number: 1, episodes: [] as EpisodeData[] },
-        currentEp: { ID: "film", name: details.name, number: 1, overview: details.overview ?? null, banner_link: null } as EpisodeData,
-        nextEp: null,
-        prevEp: null,
-      };
-    }
-
-    for (let i = 0; i < seasons.length; i++) {
-      const s = seasons[i];
-      const idx = s.episodes.findIndex((e) => e.ID === episodeId);
-      if (idx >= 0) {
-        curSeason = s;
-        curEp = s.episodes[idx];
-        if (idx + 1 < s.episodes.length) {
-          nxt = { seasonId: s.ID, ep: s.episodes[idx + 1] };
-        } else if (i + 1 < seasons.length && seasons[i + 1].episodes.length) {
-          nxt = { seasonId: seasons[i + 1].ID, ep: seasons[i + 1].episodes[0] };
-        }
-        if (idx - 1 >= 0) {
-          prv = { seasonId: s.ID, ep: s.episodes[idx - 1] };
-        } else if (i - 1 >= 0 && seasons[i - 1].episodes.length) {
-          prv = { seasonId: seasons[i - 1].ID, ep: seasons[i - 1].episodes[seasons[i - 1].episodes.length - 1] };
-        }
-        break;
-      }
-    }
-    return { currentSeason: curSeason, currentEp: curEp, nextEp: nxt, prevEp: prv };
+    return getNextEpisode(details, episodeId, isMovie);
   }, [details, episodeId, isMovie]);
 
   useEffect(() => {
@@ -172,26 +185,33 @@ export function WatchPageClient({ details, episodeId }: Props) {
     const now = Date.now();
     if (now - lastSaveRef.current < 4000) return;
     lastSaveRef.current = now;
+
+    const nextWatchEpisode = isEpisodeFinished(current, duration) ? nextEp : null;
+    const historyEpisode = nextWatchEpisode?.ep ?? currentEp;
+    const historySeason = nextWatchEpisode
+      ? details.seasons.find((season) => season.ID === nextWatchEpisode.seasonId) ?? currentSeason
+      : currentSeason;
+
     upsertHistory({
       animeId: details.ID,
       animeName: details.name,
       poster: details.poster ?? details.details_banner ?? null,
-      episodeId: currentEp.ID,
-      episodeName: currentEp.name,
+      episodeId: historyEpisode.ID,
+      episodeName: historyEpisode.name,
       episodeNumber:
-        typeof currentEp.number === "number"
-          ? currentEp.number
-          : currentEp.number
-          ? Number(currentEp.number)
+        typeof historyEpisode.number === "number"
+          ? historyEpisode.number
+          : historyEpisode.number
+          ? Number(historyEpisode.number)
           : null,
       seasonNumber:
-        typeof currentSeason?.number === "number"
-          ? currentSeason.number
-          : currentSeason?.number
-          ? Number(currentSeason.number)
+        typeof historySeason?.number === "number"
+          ? historySeason.number
+          : historySeason?.number
+          ? Number(historySeason.number)
           : null,
-      progress: current,
-      duration,
+      progress: nextWatchEpisode ? 0 : current,
+      duration: nextWatchEpisode ? 0 : duration,
       updatedAt: now,
     });
   }

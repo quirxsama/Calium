@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth/context";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
 import { SyncProvider } from "@/components/providers/sync-provider";
+import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +16,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <AuthProvider>
+        <ServiceWorkerRegister />
         <SyncProvider />
         <ToastProvider>
           <ConfirmDialogProvider>{children}</ConfirmDialogProvider>

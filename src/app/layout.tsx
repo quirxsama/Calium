@@ -70,7 +70,7 @@ export const metadata: Metadata = {
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   keywords: ["anime", "anime izle", "türkçe altyazılı anime", "türkçe dublaj anime", "calium"],
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   alternates: {
     canonical: "/",
   },
@@ -107,8 +107,12 @@ export const metadata: Metadata = {
   icons: {
     // `src/app/favicon.ico` Next convention ile otomatik yüklenir. Burada sadece
     // ek web/apple ikonları deklare edilir.
-    icon: [{ url: "/icon.webp", type: "image/webp" }],
-    apple: [{ url: "/icon.webp" }],
+    icon: [
+      { url: "/icon.webp", type: "image/webp" },
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 

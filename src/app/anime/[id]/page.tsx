@@ -173,7 +173,6 @@ export default async function AnimeDetailPage({
   const rating = details.imdb_point ? Number(details.imdb_point) : null;
   const genres = details.genre ?? [];
   const genreLinks = genres.slice(0, 3);
-  const typeLabel = getAnimeTypeLabel(details.type);
   const description = buildAnimeDescription(details);
   const animeUrl = absoluteUrl(`/anime/${encodeURIComponent(details.ID)}`);
   const imageUrl = details.poster ?? details.details_banner ?? details.banner ?? absoluteUrl("/icon.webp");

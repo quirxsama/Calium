@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 
 const SEEK_SECONDS = 10;
 const DOUBLE_TAP_MS = 450;
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_TOLERANCE = 14;
 
 type RippleState = {
   side: "left" | "right";
@@ -24,10 +26,53 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
   const accumulatedRef = useRef(0);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressActiveRef = useRef(false);
+  const previousPlaybackRateRef = useRef<number | null>(null);
   const [ripple, setRipple] = useState<RippleState | null>(null);
+  const [speedBoostActive, setSpeedBoostActive] = useState(false);
   const keyRef = useRef(0);
   const suppressNativeDoubleTapRef = useRef(false);
   const suppressNativeTapUntilRef = useRef(0);
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startSpeedBoost = useCallback(() => {
+    const p = playerRef.current;
+    if (!p || longPressActiveRef.current) return;
+
+    const currentRate = Number.isFinite(p.playbackRate) ? p.playbackRate : 1;
+    previousPlaybackRateRef.current = currentRate;
+    p.playbackRate = 2;
+    longPressActiveRef.current = true;
+    suppressNativeTapUntilRef.current = Date.now() + DOUBLE_TAP_MS;
+    lastTapRef.current = null;
+
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+
+    setSpeedBoostActive(true);
+  }, [playerRef]);
+
+  const stopSpeedBoost = useCallback(() => {
+    if (!longPressActiveRef.current) return;
+
+    const p = playerRef.current;
+    const previousRate = previousPlaybackRateRef.current ?? 1;
+    if (p) p.playbackRate = previousRate;
+
+    previousPlaybackRateRef.current = null;
+    longPressActiveRef.current = false;
+    setSpeedBoostActive(false);
+  }, [playerRef]);
 
   const handleSeek = useCallback(
     (side: "left" | "right") => {
@@ -63,7 +108,61 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
     const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
     if (!isTouch) return;
 
+    const onTouchStart = (e: TouchEvent) => {
+      // Don't intercept taps on interactive controls
+      if (isInteractiveTarget(e.target)) {
+        return;
+      }
+
+      const touch = e.changedTouches[0];
+      if (!touch || e.touches.length !== 1) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      clearLongPressTimer();
+      longPressStartRef.current = { x: touch.clientX, y: touch.clientY };
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        startSpeedBoost();
+      }, LONG_PRESS_MS);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const start = longPressStartRef.current;
+      const touch = e.changedTouches[0];
+      if (!start || !touch || longPressActiveRef.current) return;
+
+      const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
+      if (moved > LONG_PRESS_MOVE_TOLERANCE) {
+        clearLongPressTimer();
+        longPressStartRef.current = null;
+      }
+    };
+
+    const finishLongPress = (e: TouchEvent) => {
+      clearLongPressTimer();
+      longPressStartRef.current = null;
+
+      if (!longPressActiveRef.current) return false;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") {
+        e.stopImmediatePropagation();
+      }
+      suppressNativeTapUntilRef.current = Date.now() + DOUBLE_TAP_MS;
+      stopSpeedBoost();
+      return true;
+    };
+
+    const onTouchCancel = (e: TouchEvent) => {
+      finishLongPress(e);
+    };
+
     const onTouch = (e: TouchEvent) => {
+      if (finishLongPress(e)) return;
+
       // Don't intercept taps on interactive controls
       if (isInteractiveTarget(e.target)) {
         return;
@@ -128,6 +227,16 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
       e.stopPropagation();
     };
 
+    const onContextMenu = (e: Event) => {
+      if (isInteractiveTarget(e.target)) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if ("stopImmediatePropagation" in e && typeof e.stopImmediatePropagation === "function") {
+        e.stopImmediatePropagation();
+      }
+    };
+
     const onPointerLike = (e: Event) => {
       if (Date.now() > suppressNativeTapUntilRef.current) return;
       if (isInteractiveTarget(e.target)) return;
@@ -139,19 +248,29 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
       }
     };
 
+    el.addEventListener("touchstart", onTouchStart, { passive: false, capture: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: true, capture: true });
     el.addEventListener("touchend", onTouch, { passive: false, capture: true });
+    el.addEventListener("touchcancel", onTouchCancel, { passive: false, capture: true });
+    el.addEventListener("contextmenu", onContextMenu, true);
     el.addEventListener("click", onPointerLike, true);
     el.addEventListener("pointerup", onPointerLike, true);
     el.addEventListener("dblclick", onDoubleClick, true);
 
     return () => {
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      clearLongPressTimer();
+      stopSpeedBoost();
+      el.removeEventListener("touchstart", onTouchStart, true);
+      el.removeEventListener("touchmove", onTouchMove, true);
       el.removeEventListener("touchend", onTouch, true);
+      el.removeEventListener("touchcancel", onTouchCancel, true);
+      el.removeEventListener("contextmenu", onContextMenu, true);
       el.removeEventListener("click", onPointerLike, true);
       el.removeEventListener("pointerup", onPointerLike, true);
       el.removeEventListener("dblclick", onDoubleClick, true);
     };
-  }, [controlsVisible, handleSeek, isInteractiveTarget, onSingleTap, playerRef]);
+  }, [clearLongPressTimer, controlsVisible, handleSeek, isInteractiveTarget, onSingleTap, playerRef, startSpeedBoost, stopSpeedBoost]);
 
   return (
     <div className="absolute inset-0 z-20 flex pointer-events-none">
@@ -174,6 +293,13 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
               )}
             </div>
             <span className="text-sm font-semibold">{ripple.seconds} saniye</span>
+          </div>
+        </div>
+      )}
+      {speedBoostActive && (
+        <div className="absolute inset-x-0 top-5 z-30 flex justify-center pointer-events-none">
+          <div className="speed-boost-pill rounded-full bg-black/65 px-4 py-2 text-sm font-semibold text-white shadow-lg ring-1 ring-white/15 backdrop-blur">
+            2x hız
           </div>
         </div>
       )}

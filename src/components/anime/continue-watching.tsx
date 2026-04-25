@@ -4,11 +4,11 @@ import Image from "next/image";
 import { useRef } from "react";
 import { Play, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
-import { removeHistoryItem } from "@/lib/storage/history";
+import { isEpisodeFinished, removeHistoryItem } from "@/lib/storage/history";
 import { formatDuration } from "@/lib/utils";
 
 export function ContinueWatching() {
-  const history = useHistory();
+  const history = useHistory().filter((h) => !isEpisodeFinished(h.progress, h.duration));
   const ref = useRef<HTMLDivElement>(null);
   if (!history.length) return null;
 

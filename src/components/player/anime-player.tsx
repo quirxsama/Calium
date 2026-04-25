@@ -919,7 +919,7 @@ export function AnimePlayer({
           <button
             type="button"
             onClick={goNextEpisode}
-            className="group absolute bottom-16 right-4 z-50 overflow-hidden rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-all duration-300 hover:scale-[1.02] hover:opacity-95 animate-in fade-in slide-in-from-bottom-2"
+            className="group absolute bottom-20 right-4 z-50 overflow-hidden rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-all duration-300 hover:scale-[1.02] hover:opacity-95 animate-in fade-in slide-in-from-bottom-2 sm:bottom-16"
             aria-label="Sonraki bölüme geç"
           >
             <span

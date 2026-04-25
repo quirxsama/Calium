@@ -11,6 +11,13 @@ export type HistoryEntry = {
   updatedAt: number;
 };
 
+export const FINISHED_EPISODE_REMAINING_SECONDS = 180;
+
+export function isEpisodeFinished(progress: number, duration: number): boolean {
+  if (duration <= 0) return false;
+  return duration - progress <= FINISHED_EPISODE_REMAINING_SECONDS;
+}
+
 const KEY = "animes:history";
 
 export function readHistory(): HistoryEntry[] {
