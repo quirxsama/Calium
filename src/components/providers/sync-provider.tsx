@@ -3,7 +3,13 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { readFavorites } from "@/lib/storage/favorites";
-import { readHistory } from "@/lib/storage/history";
+import {
+  clearPendingHistoryClear,
+  hasPendingHistoryClear,
+  readDeletedHistoryIds,
+  readHistory,
+  removeDeletedHistoryIds,
+} from "@/lib/storage/history";
 
 const FAVORITES_KEY = "animes:favorites";
 const HISTORY_KEY = "animes:history";
@@ -12,18 +18,26 @@ const HISTORY_EVENT = "animes:history-changed";
 const SYNC_DEBOUNCE_MS = 1200;
 const POLL_INTERVAL_MS = 45000;
 
+async function fetchJson(input: RequestInfo | URL, init?: RequestInit) {
+  const res = await fetch(input, init);
+  const data = await res.json();
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error ?? "Senkronizasyon başarısız.");
+  }
+  return data;
+}
+
 async function syncFavorites() {
   const local = readFavorites();
   if (local.length > 0) {
-    await fetch("/api/sync/favorites", {
+    await fetchJson("/api/sync/favorites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ favorites: local }),
     });
   }
 
-  const res = await fetch("/api/sync/favorites", { cache: "no-store" });
-  const data = await res.json();
+  const data = await fetchJson("/api/sync/favorites", { cache: "no-store" });
   if (data.success && Array.isArray(data.favorites)) {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(data.favorites));
     window.dispatchEvent(new CustomEvent(FAVORITES_EVENT));
@@ -31,17 +45,35 @@ async function syncFavorites() {
 }
 
 async function syncHistory() {
+  if (hasPendingHistoryClear()) {
+    await fetchJson("/api/sync/history", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ all: true }),
+    });
+    clearPendingHistoryClear();
+  } else {
+    const deletedIds = readDeletedHistoryIds();
+    if (deletedIds.length > 0) {
+      await fetchJson("/api/sync/history", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ animeIds: deletedIds }),
+      });
+      removeDeletedHistoryIds(deletedIds);
+    }
+  }
+
   const local = readHistory();
   if (local.length > 0) {
-    await fetch("/api/sync/history", {
+    await fetchJson("/api/sync/history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ history: local }),
     });
   }
 
-  const res = await fetch("/api/sync/history", { cache: "no-store" });
-  const data = await res.json();
+  const data = await fetchJson("/api/sync/history", { cache: "no-store" });
   if (data.success && Array.isArray(data.history)) {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(data.history));
     window.dispatchEvent(new CustomEvent(HISTORY_EVENT));

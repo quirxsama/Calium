@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { readHistory, clearHistory, type HistoryEntry } from "@/lib/storage/history";
+import { readHistory, clearLocalHistory, type HistoryEntry } from "@/lib/storage/history";
 
 export function useHistory(): HistoryEntry[] {
   const [list, setList] = useState<HistoryEntry[]>([]);
@@ -10,7 +10,7 @@ export function useHistory(): HistoryEntry[] {
     const update = () => setList(readHistory());
     update();
 
-    const onLogout = () => { clearHistory(); };
+    const onLogout = () => { clearLocalHistory(); };
     if (!synced.current) {
       window.addEventListener("calium:auth-logout", onLogout);
       synced.current = true;

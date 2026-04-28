@@ -20,6 +20,11 @@ const HistoryBodySchema = z.object({
   history: z.array(HistoryItemSchema).max(500),
 });
 
+const DeleteHistoryBodySchema = z.object({
+  animeIds: z.array(z.string().min(1).max(64)).max(500).optional(),
+  all: z.boolean().optional(),
+});
+
 export async function GET() {
   const { user, error } = await requireUser();
   if (error) return error;
@@ -118,6 +123,42 @@ export async function POST(req: NextRequest) {
       });
     })
   );
+
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const { user, error } = await requireUser();
+  if (error) return error;
+
+  let body: unknown = {};
+  try {
+    const text = await req.text();
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    return NextResponse.json({ success: false, error: "Geçersiz istek." }, { status: 400 });
+  }
+
+  const parsed = DeleteHistoryBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { success: false, error: parsed.error.issues[0]?.message ?? "Geçersiz geçmiş verisi." },
+      { status: 400 }
+    );
+  }
+
+  const { all, animeIds = [] } = parsed.data;
+  if (all) {
+    await prisma.historyItem.deleteMany({ where: { userId: user!.id } });
+    return NextResponse.json({ success: true });
+  }
+
+  const uniqueAnimeIds = [...new Set(animeIds)];
+  if (uniqueAnimeIds.length === 0) return NextResponse.json({ success: true });
+
+  await prisma.historyItem.deleteMany({
+    where: { userId: user!.id, animeId: { in: uniqueAnimeIds } },
+  });
 
   return NextResponse.json({ success: true });
 }

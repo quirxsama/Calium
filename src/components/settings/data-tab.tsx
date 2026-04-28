@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { RefreshCw, Download, Trash2, Loader2 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { clearLocalHistory } from "@/lib/storage/history";
 
 export function DataTab() {
   const { user } = useAuth();
@@ -87,11 +88,10 @@ export function DataTab() {
     });
     if (!ok) return;
     localStorage.removeItem("animes:favorites");
-    localStorage.removeItem("animes:history");
+    clearLocalHistory();
     localStorage.removeItem("animes:caption-settings");
     localStorage.removeItem("calium:player-prefs");
     window.dispatchEvent(new CustomEvent("animes:favorites-changed"));
-    window.dispatchEvent(new CustomEvent("animes:history-changed"));
     setMessage({ type: "success", text: "Yerel veriler silindi." });
   }
 
