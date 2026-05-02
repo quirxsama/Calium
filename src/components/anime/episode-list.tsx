@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { EpisodeData } from "@/lib/anizium/schemas";
 import { cn } from "@/lib/utils";
+import { FillerBadge } from "./filler-badge";
 
 const PAGE_SIZE = 50;
 
@@ -269,9 +270,12 @@ function EpisodeRow({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] text-[var(--muted-foreground)]">
-              Bölüm {ep.number ?? "-"}
-            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="text-[11px] text-[var(--muted-foreground)]">
+                Bölüm {ep.number ?? "-"}
+              </p>
+              {ep.filler && <FillerBadge />}
+            </div>
             <p className="line-clamp-2 text-xs font-medium">{ep.name}</p>
           </div>
         </Link>
@@ -304,9 +308,12 @@ function EpisodeRow({
           </div>
         </div>
         <div className="min-w-0 flex-1 py-1">
-          <p className="text-xs text-[var(--muted-foreground)]">
-            Bölüm {ep.number ?? "-"}
-          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Bölüm {ep.number ?? "-"}
+            </p>
+            {ep.filler && <FillerBadge />}
+          </div>
           <h4 className="text-sm font-semibold line-clamp-1">{ep.name}</h4>
           {ep.overview && (
             <p className="mt-0.5 text-xs text-[var(--muted-foreground)] line-clamp-2">

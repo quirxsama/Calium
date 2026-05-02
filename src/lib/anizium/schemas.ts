@@ -48,13 +48,36 @@ export const LatestEpisodeResponseSchema = z.object({
   }),
 });
 
-export const EpisodeDataSchema = z.object({
-  ID: z.union([z.string(), z.number()]).transform(String),
-  name: z.string(),
-  number: z.union([z.number(), z.string()]).optional().nullable(),
-  overview: z.string().optional().nullable(),
-  banner_link: z.string().optional().nullable(),
-});
+const BooleanishSchema = z
+  .union([z.boolean(), z.number(), z.string()])
+  .optional()
+  .nullable()
+  .transform((value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1;
+
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "evet"].includes(normalized)) return true;
+    if (["false", "0", "no", "hayır", "hayir"].includes(normalized)) return false;
+    return null;
+  });
+
+export const EpisodeDataSchema = z
+  .object({
+    ID: z.union([z.string(), z.number()]).transform(String),
+    name: z.string(),
+    number: z.union([z.number(), z.string()]).optional().nullable(),
+    overview: z.string().optional().nullable(),
+    banner_link: z.string().optional().nullable(),
+    filler: BooleanishSchema,
+    is_filler: BooleanishSchema,
+    isFiller: BooleanishSchema,
+  })
+  .transform(({ is_filler, isFiller, filler, ...episode }) => ({
+    ...episode,
+    filler: filler ?? is_filler ?? isFiller ?? null,
+  }));
 
 export const SeasonSchema = z.object({
   ID: z.union([z.string(), z.number()]).transform(String),

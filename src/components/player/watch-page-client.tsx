@@ -16,6 +16,7 @@ import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
 import { cn, formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
 import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
+import { FillerBadge } from "@/components/anime/filler-badge";
 
 const AnimePlayer = dynamic(() => import("./anime-player").then((m) => m.AnimePlayer), {
   ssr: false,
@@ -298,9 +299,12 @@ export function WatchPageClient({ details, episodeId }: Props) {
           )}
 
           <div className="mt-4">
-            <h1 className="text-2xl font-bold">
-              {currentEp?.name ?? "Bölüm"}
-            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold">
+                {currentEp?.name ?? "Bölüm"}
+              </h1>
+              {currentEp?.filler && <FillerBadge className="text-[11px]" />}
+            </div>
             <p className="text-sm text-[var(--muted-foreground)]">
               {currentSeason?.name}
               {currentEp?.number ? ` · Bölüm ${currentEp.number}` : ""}
