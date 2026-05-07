@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAnimeDetails, getSimilarAnimes, getTMDBCredits } from "@/lib/anizium/endpoints";
+import { getAnimeDetails, getCalendar, getSimilarAnimes, getTMDBCredits } from "@/lib/anizium/endpoints";
 import { SeasonTabs } from "@/components/anime/season-tabs";
 import { FavoriteButton } from "@/components/anime/favorite-button";
 import { AddToListButton } from "@/components/anime/add-to-list-button";
@@ -14,6 +14,13 @@ import { GENRES } from "@/lib/anizium/constants";
 import { formatAnimeType } from "@/lib/utils";
 import type { Metadata } from "next";
 import { absoluteUrl, buildBreadcrumbJsonLd, SITE_NAME } from "@/lib/seo";
+import {
+  formatCalendarDate,
+  formatRelativeCalendarDate,
+  getCalendarEpisodeLabel,
+  getUpcomingCalendarItem,
+  toUpcomingEpisodePlaceholder,
+} from "@/lib/anizium/calendar";
 
 function normalizeText(value: string | null | undefined, fallback: string) {
   const normalized = value?.trim();
@@ -33,6 +40,7 @@ function getGenreHref(name: string) {
 
   return "/kesfet";
 }
+
 
 function truncateAtWordBoundary(text: string, maxLength: number) {
   if (text.length <= maxLength) return text;
@@ -145,13 +153,16 @@ export default async function AnimeDetailPage({
 
   let details;
   let similar: Awaited<ReturnType<typeof getSimilarAnimes>> | null = null;
+  let calendar: Awaited<ReturnType<typeof getCalendar>> | null = null;
   try {
-    const [detailsRes, similarRes] = await Promise.all([
+    const [detailsRes, similarRes, calendarRes] = await Promise.all([
       getAnimeDetails(id),
       getSimilarAnimes(id).catch(() => null),
+      getCalendar().catch(() => null),
     ]);
     details = detailsRes.data;
     similar = similarRes;
+    calendar = calendarRes;
   } catch {
     notFound();
   }
@@ -200,6 +211,10 @@ export default async function AnimeDetailPage({
           }
         : undefined,
   };
+  const upcomingCalendarItem = getUpcomingCalendarItem(
+    calendar?.data.flatMap((day) => day.contents) ?? [],
+    details.ID
+  );
 
   return (
     <div>
@@ -286,6 +301,24 @@ export default async function AnimeDetailPage({
               </p>
             )}
 
+            {upcomingCalendarItem && (
+              <div className="mt-5 max-w-3xl rounded-2xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--primary)]">
+                  Yayın bilgisi
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--foreground)] md:text-base">
+                  Devam eden animenin {getCalendarEpisodeLabel(upcomingCalendarItem.item)} bölümü {" "}
+                  <span className="font-bold">{formatCalendarDate(upcomingCalendarItem.date)}</span> tarihinde ({formatRelativeCalendarDate(upcomingCalendarItem.date)}) yayınlanacak.
+                </p>
+                <Link
+                  href="/yayin-takvimi"
+                  className="mt-3 inline-flex text-xs font-semibold text-[var(--primary)] hover:underline"
+                >
+                  Tüm yayın takvimini gör
+                </Link>
+              </div>
+            )}
+
             <div className="mt-6 flex flex-wrap items-center gap-3">
               {(firstEp || isMovie) && (
                 <Link
@@ -353,7 +386,11 @@ export default async function AnimeDetailPage({
         {(details.seasons ?? []).length > 0 && (
           <section className="mt-10">
             <h2 className="text-2xl font-bold mb-4">Bölümler</h2>
-            <SeasonTabs animeId={details.ID} seasons={details.seasons ?? []} />
+            <SeasonTabs
+              animeId={details.ID}
+              seasons={details.seasons ?? []}
+              upcomingEpisode={toUpcomingEpisodePlaceholder(upcomingCalendarItem, details.seasons ?? [])}
+            />
 
             {genreLinks.length > 0 && (
               <section className="mt-8 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5">

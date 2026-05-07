@@ -48,6 +48,47 @@ export const LatestEpisodeResponseSchema = z.object({
   }),
 });
 
+export const CalendarContentMediaSchema = z.object({
+  name: z.string(),
+  logo: z.string().optional().nullable(),
+  banner: z.string().optional().nullable(),
+  details_banner: z.string().optional().nullable(),
+  poster: z.string().optional().nullable(),
+});
+
+export const CalendarContentSchema = z.object({
+  _id: z.string().optional().nullable(),
+  ID: z.union([z.string(), z.number()]).transform(String),
+  content_id: z.union([z.string(), z.number()]).optional().nullable().transform((value) =>
+    value == null ? null : String(value)
+  ),
+  content_type: z.string().optional().nullable(),
+  name: z.string().optional().nullable(),
+  title: z.string().optional().nullable(),
+  episode_name: z.string().optional().nullable(),
+  season: z.union([z.number(), z.string()]).optional().nullable(),
+  episode: z.union([z.number(), z.string()]).optional().nullable(),
+  active: z.boolean().optional().default(true),
+  category: z.array(z.string()).optional().default([]),
+  on_air: z.boolean().optional().default(false),
+  release_date: z.union([z.number(), z.string()]),
+  revise: z.boolean().optional().nullable(),
+  content: CalendarContentMediaSchema,
+});
+
+export const CalendarDaySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  month_name: z.string().optional().nullable(),
+  day_name: z.string().optional().nullable(),
+  contents: z.array(CalendarContentSchema).default([]),
+});
+
+export const CalendarResponseSchema = z.object({
+  success: z.boolean().optional().default(true),
+  data: z.array(CalendarDaySchema).default([]),
+});
+
 const BooleanishSchema = z
   .union([z.boolean(), z.number(), z.string()])
   .optional()
@@ -197,6 +238,10 @@ export type AnimeData = z.infer<typeof AnimeDataSchema>;
 export type ApiResponse = z.infer<typeof ApiResponseSchema>;
 export type LatestEpisodeData = z.infer<typeof LatestEpisodeDataSchema>;
 export type LatestEpisodeResponse = z.infer<typeof LatestEpisodeResponseSchema>;
+export type CalendarContentMedia = z.infer<typeof CalendarContentMediaSchema>;
+export type CalendarContent = z.infer<typeof CalendarContentSchema>;
+export type CalendarDay = z.infer<typeof CalendarDaySchema>;
+export type CalendarResponse = z.infer<typeof CalendarResponseSchema>;
 export type EpisodeData = z.infer<typeof EpisodeDataSchema>;
 export type Season = z.infer<typeof SeasonSchema>;
 export type Studio = z.infer<typeof StudioSchema>;

@@ -10,6 +10,7 @@ import type {
   SourceGroup,
   SubtitleData,
 } from "@/lib/anizium/schemas";
+import type { UpcomingEpisodePlaceholder } from "@/lib/anizium/calendar";
 import { upsertHistory, getHistoryEntry, isEpisodeFinished } from "@/lib/storage/history";
 import { usePublishActivity } from "@/lib/realtime/presence";
 import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
@@ -28,6 +29,7 @@ const AnimePlayer = dynamic(() => import("./anime-player").then((m) => m.AnimePl
 type Props = {
   details: AnimeDetails;
   episodeId: string;
+  upcomingEpisode?: UpcomingEpisodePlaceholder | null;
 };
 
 type SourcesState =
@@ -88,7 +90,7 @@ function getNextEpisode(
   return { currentSeason: curSeason, currentEp: curEp, nextEp: nxt, prevEp: prv };
 }
 
-export function WatchPageClient({ details, episodeId }: Props) {
+export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: Props) {
   const router = useRouter();
   const [state, setState] = useState<SourcesState>({ status: "loading" });
   const [startAt, setStartAt] = useState<number>(0);
@@ -133,6 +135,10 @@ export function WatchPageClient({ details, episodeId }: Props) {
   const seasonNum = rawSeason != null ? Number(rawSeason) : NaN;
   const epNum = rawEp != null ? Number(rawEp) : NaN;
   const animeId = details.ID;
+  const upcomingSeason = upcomingEpisode?.season;
+  const shouldShowUpcoming =
+    upcomingEpisode &&
+    (upcomingSeason == null || String(upcomingSeason) === String(currentSeason?.number));
 
   useEffect(() => {
     queueMicrotask(() => setState({ status: "loading" }));
@@ -367,6 +373,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
             animeId={details.ID}
             episodes={currentSeason?.episodes ?? []}
             activeEpisodeId={episodeId}
+            upcomingEpisode={shouldShowUpcoming ? upcomingEpisode : null}
             variant="sidebar"
           />
         </aside>
@@ -377,6 +384,7 @@ export function WatchPageClient({ details, episodeId }: Props) {
         animeId={details.ID}
         episodes={currentSeason?.episodes ?? []}
         activeEpisodeId={episodeId}
+        upcomingEpisode={shouldShowUpcoming ? upcomingEpisode : null}
         title={currentSeason?.name ?? "Bölümler"}
       />
 
@@ -388,11 +396,13 @@ function MobileEpisodeSection({
   animeId,
   episodes,
   activeEpisodeId,
+  upcomingEpisode,
   title,
 }: {
   animeId: string;
   episodes: EpisodeData[];
   activeEpisodeId: string;
+  upcomingEpisode?: UpcomingEpisodePlaceholder | null;
   title: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -420,6 +430,7 @@ function MobileEpisodeSection({
             animeId={animeId}
             episodes={episodes}
             activeEpisodeId={activeEpisodeId}
+            upcomingEpisode={upcomingEpisode}
             variant="sidebar"
           />
         </div>

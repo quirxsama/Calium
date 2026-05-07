@@ -12,6 +12,7 @@ const publicRoutes = [
   "/dublaj",
   "/kesfet",
   "/top",
+  "/yayin-takvimi",
 ] as const;
 
 const SITEMAP_SOURCE_PAGES = 5;

@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { EpisodeData } from "@/lib/anizium/schemas";
+import type { UpcomingEpisodePlaceholder } from "@/lib/anizium/calendar";
 import { cn } from "@/lib/utils";
 import { FillerBadge } from "./filler-badge";
 
@@ -25,11 +26,25 @@ type Props = {
   episodes: EpisodeData[];
   activeEpisodeId?: string;
   variant?: Variant;
+  upcomingEpisode?: UpcomingEpisodePlaceholder | null;
 };
+
+type EpisodeListItem =
+  | { kind: "episode"; ep: EpisodeData }
+  | { kind: "upcoming"; upcoming: UpcomingEpisodePlaceholder };
 
 function epNum(e: EpisodeData): number {
   const n = typeof e.number === "number" ? e.number : Number(e.number);
   return Number.isFinite(n) ? n : 0;
+}
+
+function upcomingEpNum(e: UpcomingEpisodePlaceholder): number {
+  const n = typeof e.number === "number" ? e.number : Number(e.number);
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
+
+function itemNum(item: EpisodeListItem): number {
+  return item.kind === "episode" ? epNum(item.ep) : upcomingEpNum(item.upcoming);
 }
 
 export function EpisodeList({
@@ -37,6 +52,7 @@ export function EpisodeList({
   episodes,
   activeEpisodeId,
   variant = "grid",
+  upcomingEpisode = null,
 }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortDir>("asc");
@@ -46,20 +62,38 @@ export function EpisodeList({
   const [prevActiveEp, setPrevActiveEp] = useState(activeEpisodeId);
 
   // Arama ve sıralama uygula
-  const filtered = useMemo(() => {
+  const filtered = useMemo<EpisodeListItem[]>(() => {
     const q = query.trim().toLowerCase();
+    const episodeItems = (q
+      ? episodes
+          .filter((e) => {
+            const n = String(e.number ?? "").toLowerCase();
+            return e.name.toLowerCase().includes(q) || n.includes(q);
+          })
+      : episodes.slice()
+    ).map((ep) => ({ kind: "episode" as const, ep }));
+
+    const upcomingItems: EpisodeListItem[] = upcomingEpisode
+      ? [{ kind: "upcoming", upcoming: upcomingEpisode }]
+      : [];
     const list = q
-      ? episodes.filter((e) => {
-          const n = String(e.number ?? "").toLowerCase();
-          return e.name.toLowerCase().includes(q) || n.includes(q);
-        })
-      : episodes.slice();
+      ? [
+          ...episodeItems,
+          ...upcomingItems.filter((item) => {
+            if (item.kind !== "upcoming") return false;
+            const { upcoming } = item;
+            const n = String(upcoming.number ?? "").toLowerCase();
+            return n.includes(q) || upcoming.releaseText.toLowerCase().includes(q);
+          }),
+        ]
+      : [...episodeItems, ...upcomingItems];
+
     list.sort((a, b) => {
-      const d = epNum(a) - epNum(b);
+      const d = itemNum(a) - itemNum(b);
       return sort === "asc" ? d : -d;
     });
     return list;
-  }, [episodes, query, sort]);
+  }, [episodes, query, sort, upcomingEpisode]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
@@ -67,7 +101,7 @@ export function EpisodeList({
   if (activeEpisodeId !== prevActiveEp) {
     setPrevActiveEp(activeEpisodeId);
     if (activeEpisodeId) {
-      const idx = filtered.findIndex((e) => e.ID === activeEpisodeId);
+      const idx = filtered.findIndex((item) => item.kind === "episode" && item.ep.ID === activeEpisodeId);
       if (idx >= 0) setPage(Math.floor(idx / PAGE_SIZE) + 1);
     }
   }
@@ -181,24 +215,32 @@ export function EpisodeList({
       ) : compact ? (
         <ul className="space-y-2">
           {pageItems.map((ep) => (
-            <EpisodeRow
-              key={ep.ID}
-              animeId={animeId}
-              ep={ep}
-              active={ep.ID === activeEpisodeId}
-              compact
-            />
+            ep.kind === "episode" ? (
+              <EpisodeRow
+                key={ep.ep.ID}
+                animeId={animeId}
+                ep={ep.ep}
+                active={ep.ep.ID === activeEpisodeId}
+                compact
+              />
+            ) : (
+              <UpcomingEpisodeRow key={ep.upcoming.id} upcoming={ep.upcoming} compact />
+            )
           ))}
         </ul>
       ) : (
         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageItems.map((ep) => (
-            <EpisodeRow
-              key={ep.ID}
-              animeId={animeId}
-              ep={ep}
-              active={ep.ID === activeEpisodeId}
-            />
+            ep.kind === "episode" ? (
+              <EpisodeRow
+                key={ep.ep.ID}
+                animeId={animeId}
+                ep={ep.ep}
+                active={ep.ep.ID === activeEpisodeId}
+              />
+            ) : (
+              <UpcomingEpisodeRow key={ep.upcoming.id} upcoming={ep.upcoming} />
+            )
           ))}
         </ul>
       )}
@@ -226,6 +268,56 @@ export function EpisodeList({
         </div>
       )}
     </div>
+  );
+}
+
+function UpcomingEpisodeRow({
+  upcoming,
+  compact,
+}: {
+  upcoming: UpcomingEpisodePlaceholder;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <li>
+        <div className="flex cursor-not-allowed gap-2 rounded-lg border border-dashed border-[var(--primary)]/40 bg-[var(--primary)]/5 p-2 text-sm opacity-90">
+          <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded bg-[var(--muted)]">
+            {upcoming.image && (
+              <Image src={upcoming.image} alt="Yaklaşan bölüm" fill sizes="96px" className="object-cover opacity-70" />
+            )}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] font-semibold text-white">
+              Yakında
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] text-[var(--muted-foreground)]">Yaklaşan bölüm</p>
+            <p className="line-clamp-2 text-xs font-medium">Bölüm {upcoming.number ?? "-"}</p>
+            <p className="mt-1 text-[11px] text-[var(--primary)]">{upcoming.releaseText}</p>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <div className="group flex cursor-not-allowed gap-3 rounded-xl border border-dashed border-[var(--primary)]/40 bg-[var(--primary)]/5 p-2 opacity-90">
+        <div className="relative h-20 w-36 shrink-0 overflow-hidden rounded-lg bg-[var(--muted)]">
+          {upcoming.image && (
+            <Image src={upcoming.image} alt="Yaklaşan bölüm" fill sizes="144px" className="object-cover opacity-70" />
+          )}
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-semibold text-white">
+            Yakında
+          </div>
+        </div>
+        <div className="min-w-0 flex-1 py-1">
+          <p className="text-xs text-[var(--muted-foreground)]">Yaklaşan bölüm</p>
+          <h4 className="text-sm font-semibold line-clamp-1">Bölüm {upcoming.number ?? "-"}</h4>
+          <p className="mt-1 text-xs text-[var(--primary)]">{upcoming.releaseText}</p>
+        </div>
+      </div>
+    </li>
   );
 }
 

@@ -1,14 +1,14 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Sparkles, Heart, Clock, User } from "lucide-react";
+import { Home, Sparkles, Heart, CalendarDays, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/", label: "Ana Sayfa", icon: Home },
   { href: "/kesfet", label: "Keşfet", icon: Sparkles },
+  { href: "/yayin-takvimi", label: "Takvim", icon: CalendarDays },
   { href: "/favoriler", label: "Favoriler", icon: Heart },
-  { href: "/gecmis", label: "Geçmiş", icon: Clock },
   { href: "/ayarlar", label: "Hesap", icon: User },
 ];
 

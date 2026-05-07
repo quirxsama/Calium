@@ -3,11 +3,13 @@ import { CACHE_TTL } from "./constants";
 import {
   ApiResponseSchema,
   AnimeDetailsResponseSchema,
+  CalendarResponseSchema,
   LatestEpisodeResponseSchema,
   SourceResponseSchema,
   TMDBCreditsSchema,
   type ApiResponse,
   type AnimeDetailsResponse,
+  type CalendarResponse,
   type LatestEpisodeResponse,
   type SourceResponse,
   type TMDBCredits,
@@ -20,6 +22,13 @@ export async function getLatestEpisodes(page = 1): Promise<LatestEpisodeResponse
     revalidate: CACHE_TTL.latest,
   });
   return LatestEpisodeResponseSchema.parse(raw);
+}
+
+export async function getCalendar(): Promise<CalendarResponse> {
+  const raw = await aniziumFetch("/page/calendar", {
+    revalidate: CACHE_TTL.calendar,
+  });
+  return CalendarResponseSchema.parse(raw);
 }
 
 export type CatalogKind = "series" | "movie" | "trdub" | "genre";

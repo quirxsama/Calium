@@ -80,6 +80,7 @@ export const TMDB_API_KEY = process.env.TMDB_API_KEY || "";
 export const CACHE_TTL = {
   domain: 300, // 5dk
   latest: 600, // 10dk
+  calendar: 900, // 15dk
   catalog: 1800, // 30dk
   top: 1800,
   detail: 3600, // 1sa

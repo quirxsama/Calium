@@ -1,14 +1,17 @@
 "use client";
 import { useState } from "react";
 import type { Season } from "@/lib/anizium/schemas";
+import type { UpcomingEpisodePlaceholder } from "@/lib/anizium/calendar";
 import { EpisodeList } from "./episode-list";
 
 export function SeasonTabs({
   animeId,
   seasons,
+  upcomingEpisode,
 }: {
   animeId: string;
   seasons: Season[];
+  upcomingEpisode?: UpcomingEpisodePlaceholder | null;
 }) {
   const [active, setActive] = useState(seasons[0]?.ID);
   if (!seasons.length) {
@@ -17,6 +20,10 @@ export function SeasonTabs({
     );
   }
   const season = seasons.find((s) => s.ID === active) ?? seasons[0];
+  const upcomingSeason = upcomingEpisode?.season;
+  const shouldShowUpcoming =
+    upcomingEpisode &&
+    (upcomingSeason == null || String(upcomingSeason) === String(season.number));
 
   return (
     <div>
@@ -41,6 +48,7 @@ export function SeasonTabs({
       <EpisodeList
         animeId={animeId}
         episodes={season.episodes}
+        upcomingEpisode={shouldShowUpcoming ? upcomingEpisode : null}
         variant="grid"
       />
     </div>

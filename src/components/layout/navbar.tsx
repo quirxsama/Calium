@@ -3,7 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Search, Flame, Heart, Clock, Home, Sparkles, Mic, Users } from "lucide-react";
+import { Search, Flame, Heart, Clock, Home, Sparkles, Mic, Users, CalendarDays } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AccountMenu } from "@/components/account/account-menu";
 import { NotificationBell } from "@/components/social/notification-bell";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/", label: "Ana Sayfa", icon: Home },
   { href: "/kesfet", label: "Keşfet", icon: Sparkles },
+  { href: "/yayin-takvimi", label: "Takvim", icon: CalendarDays },
   { href: "/top", label: "Top 100", icon: Flame },
   { href: "/dublaj", label: "Türkçe Dublaj", icon: Mic },
   { href: "/arkadaslar", label: "Sosyal", icon: Users },
