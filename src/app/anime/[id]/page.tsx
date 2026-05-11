@@ -9,7 +9,8 @@ import { AddToListButton } from "@/components/anime/add-to-list-button";
 import { AnimePosterFlip } from "@/components/anime/anime-poster-flip";
 import { CastSection } from "@/components/anime/cast-section";
 import { RecommendedAnime } from "@/components/anime/recommended-anime";
-import { Play, Star, Calendar } from "lucide-react";
+import { WatchCta } from "@/components/anime/watch-cta";
+import { Star, Calendar } from "lucide-react";
 import { GENRES } from "@/lib/anizium/constants";
 import { formatAnimeType } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -213,7 +214,8 @@ export default async function AnimeDetailPage({
   };
   const upcomingCalendarItem = getUpcomingCalendarItem(
     calendar?.data.flatMap((day) => day.contents) ?? [],
-    details.ID
+    details.ID,
+    details.seasons ?? []
   );
 
   return (
@@ -320,15 +322,7 @@ export default async function AnimeDetailPage({
             )}
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              {(firstEp || isMovie) && (
-                <Link
-                  href={`/izle/${encodeURIComponent(details.ID)}/${firstEp ? encodeURIComponent(firstEp.ID) : "film"}`}
-                  className="inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-6 py-2.5 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg hover:brightness-110 transition"
-                >
-                  <Play className="h-4 w-4 fill-current" />
-                  {isMovie && !firstEp ? "Filmi İzle" : "İlk Bölümü İzle"}
-                </Link>
-              )}
+              <WatchCta animeId={details.ID} firstEpisodeId={firstEp?.ID ?? null} isMovie={Boolean(isMovie)} />
               <FavoriteButton
                 id={details.ID}
                 name={details.name}

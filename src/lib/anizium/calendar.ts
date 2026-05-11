@@ -89,6 +89,23 @@ function numericValue(value: string | number | null | undefined) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function hasEpisodeInSeasons(
+  item: CalendarContent,
+  seasons: SeasonSource[] = []
+) {
+  const episodeNumber = numericValue(inferUpcomingEpisodeNumber(item, seasons));
+  if (episodeNumber == null) return false;
+
+  const calendarSeason = numericValue(item.season);
+  const matchingSeasons = calendarSeason == null
+    ? seasons
+    : seasons.filter((season) => numericValue(season.number) === calendarSeason);
+
+  return matchingSeasons.some((season) =>
+    (season.episodes ?? []).some((episode) => numericValue(episode.number) === episodeNumber)
+  );
+}
+
 export function inferUpcomingEpisodeNumber(
   item: CalendarContent,
   seasons: SeasonSource[] = []
@@ -109,12 +126,21 @@ export function inferUpcomingEpisodeNumber(
   return lastNumber == null ? null : lastNumber + 1;
 }
 
-export function getUpcomingCalendarItem(items: CalendarContent[], animeId: string) {
+export function getUpcomingCalendarItem(
+  items: CalendarContent[],
+  animeId: string,
+  seasons: SeasonSource[] = []
+) {
   const today = startOfTodayInIstanbul().getTime();
   return items
     .filter((item) => {
       const calendarAnimeId = item.content_id ?? item.ID;
-      return item.active && isCalendarEpisode(item) && calendarAnimeId === animeId;
+      return (
+        item.active &&
+        isCalendarEpisode(item) &&
+        calendarAnimeId === animeId &&
+        !hasEpisodeInSeasons(item, seasons)
+      );
     })
     .map((item) => ({ item, date: toCalendarDate(item.release_date) }))
     .filter((entry): entry is UpcomingCalendarEntry => {

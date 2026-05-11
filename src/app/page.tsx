@@ -10,7 +10,7 @@ import { AnimeRail } from "@/components/anime/rail";
 import { ContinueWatching } from "@/components/anime/continue-watching";
 import { EngagementPanels } from "@/components/discovery/engagement-panels";
 import { PersonalRecommendationsRail } from "@/components/discovery/personal-recommendations-rail";
-import type { AnimeData, LatestEpisodeData } from "@/lib/anizium/schemas";
+import type { AnimeData, ApiResponse, LatestEpisodeData, LatestEpisodeResponse } from "@/lib/anizium/schemas";
 
 function latestToAnime(list: LatestEpisodeData[]): AnimeData[] {
   return list.map((e) => ({
@@ -49,17 +49,71 @@ const EMPTY_LATEST = {
   page: { data: [] as LatestEpisodeData[], page: 1, total_pages: 0 },
 };
 
+const RAIL_PAGE_COUNT = 3;
+
+function uniqueById<T extends { ID: string }>(items: T[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.ID)) return false;
+    seen.add(item.ID);
+    return true;
+  });
+}
+
+function mergeAnimePages(pages: ApiResponse[]): ApiResponse {
+  const first = pages[0] ?? EMPTY_PAGE;
+  return {
+    ...first,
+    page: {
+      ...first.page,
+      page: 1,
+      data: uniqueById(pages.flatMap((res) => res.page.data)),
+      total_pages: Math.max(...pages.map((res) => res.page.total_pages ?? 0), 0),
+      next_page: pages.some((res) => res.page.next_page != null) ? 2 : null,
+    },
+  };
+}
+
+function mergeLatestPages(pages: LatestEpisodeResponse[]): LatestEpisodeResponse {
+  const first = pages[0] ?? EMPTY_LATEST;
+  return {
+    ...first,
+    page: {
+      ...first.page,
+      page: 1,
+      data: uniqueById(pages.flatMap((res) => res.page.data)),
+      total_pages: Math.max(...pages.map((res) => res.page.total_pages ?? 0), 0),
+      next_page: pages.some((res) => res.page.next_page != null) ? 2 : null,
+    },
+  };
+}
+
+async function loadRailPages<T>(loader: (page: number) => Promise<T>, fallback: T) {
+  return Promise.all(
+    Array.from({ length: RAIL_PAGE_COUNT }, (_, index) =>
+      safe(() => loader(index + 1), fallback)
+    )
+  );
+}
+
 export const revalidate = 600;
 
 export default async function Home() {
-  const [latest, top, dub, action, romance, isekai] = await Promise.all([
-    safe(() => getLatestEpisodes(1), EMPTY_LATEST),
-    safe(() => getTop(1), EMPTY_PAGE),
-    safe(() => getCatalog({ kind: "trdub", page: 1 }), EMPTY_PAGE),
-    safe(() => getCatalog({ kind: "genre", id: "62263", page: 1 }), EMPTY_PAGE),
-    safe(() => getCatalog({ kind: "genre", id: "59624", page: 1 }), EMPTY_PAGE),
-    safe(() => getCatalog({ kind: "genre", id: "23813", page: 1 }), EMPTY_PAGE),
+  const [latestPages, topPages, dubPages, actionPages, romancePages, isekaiPages] = await Promise.all([
+    loadRailPages((page) => getLatestEpisodes(page), EMPTY_LATEST),
+    loadRailPages((page) => getTop(page), EMPTY_PAGE),
+    loadRailPages((page) => getCatalog({ kind: "trdub", page }), EMPTY_PAGE),
+    loadRailPages((page) => getCatalog({ kind: "genre", id: "62263", page }), EMPTY_PAGE),
+    loadRailPages((page) => getCatalog({ kind: "genre", id: "59624", page }), EMPTY_PAGE),
+    loadRailPages((page) => getCatalog({ kind: "genre", id: "23813", page }), EMPTY_PAGE),
   ]);
+
+  const latest = mergeLatestPages(latestPages);
+  const top = mergeAnimePages(topPages);
+  const dub = mergeAnimePages(dubPages);
+  const action = mergeAnimePages(actionPages);
+  const romance = mergeAnimePages(romancePages);
+  const isekai = mergeAnimePages(isekaiPages);
 
   const latestAnime = latestToAnime(latest.page.data);
   const heroBase = (top.page.data.length ? top.page.data : latestAnime).slice(0, 6);

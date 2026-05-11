@@ -139,9 +139,6 @@ export default async function TurPage({
         <p className="mt-3 text-sm leading-7 text-[var(--muted-foreground)] md:text-base">
           Bu sayfa, {genre.name.toLocaleLowerCase("tr-TR")} temasına ilgi duyan izleyiciler için hazırlanmış bir keşif alanıdır. Öne çıkan yapımları tek yerde inceleyebilir, seni benzer türlerdeki anime detay sayfalarına götüren iç linklerle yeni seriler keşfedebilirsin.
         </p>
-        <p className="mt-3 text-sm leading-7 text-[var(--muted-foreground)] md:text-base">
-          Özellikle {genre.name.toLocaleLowerCase("tr-TR")} arayan kullanıcılar için bu sayfa; hızlı seçim yapmayı kolaylaştıran liste görünümü, dahili bağlantılar ve düzenli güncellenen katalog akışıyla SEO açısından güçlü bir landing page olarak çalışır.
-        </p>
       </section>
 
       <AnimeGrid items={res.page.data} />
