@@ -21,6 +21,7 @@ const QUALITIES = [
 
 export function PlayerTab() {
   const [autoPlay, setAutoPlay] = useState(true);
+  const [autoSkipIntro, setAutoSkipIntro] = useState(false);
   const [defaultQuality, setDefaultQuality] = useState("auto");
   const [defaultDubLanguage, setDefaultDubLanguage] = useState("ja");
   const [loading, setLoading] = useState(false);
@@ -37,6 +38,7 @@ export function PlayerTab() {
           if (!cancelled) {
             queueMicrotask(() => {
               if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
+              if (typeof parsed.autoSkipIntro === "boolean") setAutoSkipIntro(parsed.autoSkipIntro);
               if (typeof parsed.defaultQuality === "string") setDefaultQuality(parsed.defaultQuality);
               if (typeof parsed.defaultDubLanguage === "string") setDefaultDubLanguage(parsed.defaultDubLanguage);
             });
@@ -55,12 +57,14 @@ export function PlayerTab() {
 
         const nextPrefs = {
           autoPlay: typeof preferences.autoPlay === "boolean" ? preferences.autoPlay : true,
+          autoSkipIntro: typeof preferences.autoSkipIntro === "boolean" ? preferences.autoSkipIntro : false,
           defaultQuality: typeof preferences.defaultQuality === "string" ? preferences.defaultQuality : "auto",
           defaultDubLanguage: typeof preferences.defaultDubLanguage === "string" ? preferences.defaultDubLanguage : "ja",
         };
 
         queueMicrotask(() => {
           setAutoPlay(nextPrefs.autoPlay);
+          setAutoSkipIntro(nextPrefs.autoSkipIntro);
           setDefaultQuality(nextPrefs.defaultQuality);
           setDefaultDubLanguage(nextPrefs.defaultDubLanguage);
         });
@@ -81,7 +85,7 @@ export function PlayerTab() {
     setLoading(true);
     setMessage(null);
 
-    const prefs = { autoPlay, defaultQuality, defaultDubLanguage };
+    const prefs = { autoPlay, autoSkipIntro, defaultQuality, defaultDubLanguage };
     localStorage.setItem("calium:player-prefs", JSON.stringify(prefs));
 
     try {
@@ -111,7 +115,7 @@ export function PlayerTab() {
         <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div>
             <p className="text-sm font-medium text-[var(--foreground)]">Otomatik Oynat</p>
-            <p className="text-xs text-[var(--muted-foreground)]">Bölüm bitince sonraki bölüme geç</p>
+            <p className="text-xs text-[var(--muted-foreground)]">İzleme sayfası yüklendiğinde videoyu otomatik başlat</p>
           </div>
           <button
             type="button"
@@ -125,6 +129,27 @@ export function PlayerTab() {
             <div className={cn(
               "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
               autoPlay ? "translate-x-4" : "translate-x-0.5"
+            )} />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)]">Introyu Otomatik Atla</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Intro atlama görününce 3 saniye sonra otomatik geç</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoSkipIntro((v) => !v)}
+            className={cn(
+              "relative h-6 w-10 rounded-full transition",
+              autoSkipIntro ? "bg-[var(--primary)]" : "bg-[var(--muted)]"
+            )}
+            aria-label="Introyu otomatik atla"
+          >
+            <div className={cn(
+              "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+              autoSkipIntro ? "translate-x-4" : "translate-x-0.5"
             )} />
           </button>
         </div>

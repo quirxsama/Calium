@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -162,6 +161,27 @@ function detectType(link: string, type?: string | null): MediaType {
   return "video/mp4";
 }
 
+function attemptPlayerPlay(player: MediaPlayerInstance) {
+  const playerLike = player as unknown as { play?: () => Promise<void> | void; muted?: boolean };
+
+  try {
+    const maybePromise = playerLike.play?.();
+    if (maybePromise && typeof (maybePromise as Promise<void>).catch === "function") {
+      (maybePromise as Promise<void>).catch(() => {
+        try {
+          playerLike.muted = true;
+          void playerLike.play?.();
+        } catch {}
+      });
+    }
+  } catch {
+    try {
+      playerLike.muted = true;
+      void playerLike.play?.();
+    } catch {}
+  }
+}
+
 export function AnimePlayer({
   groups,
   subtitles,
@@ -189,14 +209,16 @@ export function AnimePlayer({
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const seededRef = useRef(false);
   const readyFiredRef = useRef(false);
+  const autoplayAttemptedRef = useRef(false);
   const overlayControlsTimerRef = useRef<number | null>(null);
   const orientationLockedRef = useRef(false);
   const outroTimerRef = useRef<number | null>(null);
   const outroStartRef = useRef<number | null>(null);
-  const fullscreenResumePendingRef = useRef(false);
-  const autoplayResumePendingRef = useRef(false);
+  const introTimerRef = useRef<number | null>(null);
+  const introStartRef = useRef<number | null>(null);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
+  const [introProgress, setIntroProgress] = useState(0);
   const [outroProgress, setOutroProgress] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isTouchDevice] = useState(
@@ -229,22 +251,24 @@ export function AnimePlayer({
 
   const [playerPrefs, setPlayerPrefs] = useState<{
     autoPlay: boolean;
+    autoSkipIntro: boolean;
     defaultQuality: PreferredQuality;
     defaultDubLanguage: PreferredDubLanguage;
   }>(() => {
     if (typeof window === "undefined") {
-      return { autoPlay: true, defaultQuality: "auto", defaultDubLanguage: "ja" };
+      return { autoPlay: true, autoSkipIntro: false, defaultQuality: "auto", defaultDubLanguage: "ja" };
     }
 
     try {
       const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
       if (!stored) {
-        return { autoPlay: true, defaultQuality: "auto", defaultDubLanguage: "ja" };
+        return { autoPlay: true, autoSkipIntro: false, defaultQuality: "auto", defaultDubLanguage: "ja" };
       }
 
       const parsed = JSON.parse(stored) as Record<string, unknown>;
       return {
         autoPlay: typeof parsed.autoPlay === "boolean" ? parsed.autoPlay : true,
+        autoSkipIntro: typeof parsed.autoSkipIntro === "boolean" ? parsed.autoSkipIntro : false,
         defaultQuality: parsed.defaultQuality === "2160p" || parsed.defaultQuality === "1440p" || parsed.defaultQuality === "1080p" || parsed.defaultQuality === "720p" || parsed.defaultQuality === "480p" || parsed.defaultQuality === "auto"
           ? parsed.defaultQuality
           : "auto",
@@ -253,7 +277,7 @@ export function AnimePlayer({
           : "ja",
       };
     } catch {
-      return { autoPlay: true, defaultQuality: "auto", defaultDubLanguage: "ja" };
+      return { autoPlay: true, autoSkipIntro: false, defaultQuality: "auto", defaultDubLanguage: "ja" };
     }
   });
 
@@ -332,6 +356,7 @@ export function AnimePlayer({
         const parsed = JSON.parse(stored) as Record<string, unknown>;
         setPlayerPrefs({
           autoPlay: typeof parsed.autoPlay === "boolean" ? parsed.autoPlay : true,
+          autoSkipIntro: typeof parsed.autoSkipIntro === "boolean" ? parsed.autoSkipIntro : false,
           defaultQuality: parsed.defaultQuality === "2160p" || parsed.defaultQuality === "1440p" || parsed.defaultQuality === "1080p" || parsed.defaultQuality === "720p" || parsed.defaultQuality === "480p" || parsed.defaultQuality === "auto"
             ? parsed.defaultQuality
             : "auto",
@@ -351,6 +376,7 @@ export function AnimePlayer({
 
   useEffect(() => {
     seededRef.current = false;
+    autoplayAttemptedRef.current = false;
   }, [active?.url]);
 
   useEffect(() => {
@@ -414,19 +440,82 @@ export function AnimePlayer({
     setOutroProgress(0);
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const shouldRestore = sessionStorage.getItem("anizium:resume-fullscreen") === "1";
-    const shouldAutoplay = sessionStorage.getItem("anizium:resume-autoplay") === "1";
-    if (shouldRestore) {
-      fullscreenResumePendingRef.current = true;
-      sessionStorage.removeItem("anizium:resume-fullscreen");
-    }
-    if (shouldAutoplay) {
-      autoplayResumePendingRef.current = true;
-      sessionStorage.removeItem("anizium:resume-autoplay");
-    }
+  const focusPlayer = useCallback(() => {
+    const el = playerRef.current?.el;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      try {
+        el.focus({ preventScroll: true });
+      } catch {
+        el.focus();
+      }
+    });
   }, []);
+
+  const skipIntro = useCallback(() => {
+    const p = playerRef.current;
+    if (p && introEnd != null) {
+      cancelOutroAutoAdvance();
+      if (introTimerRef.current) {
+        window.clearInterval(introTimerRef.current);
+        introTimerRef.current = null;
+      }
+      introStartRef.current = null;
+      p.currentTime = introEnd;
+      setIntroProgress(0);
+      setShowIntroSkip(false);
+      focusPlayer();
+    }
+  }, [cancelOutroAutoAdvance, focusPlayer, introEnd]);
+
+  useEffect(() => {
+    if (!showIntroSkip || !playerPrefs.autoSkipIntro || introEnd == null) {
+      if (introTimerRef.current) {
+        window.clearInterval(introTimerRef.current);
+        introTimerRef.current = null;
+      }
+      introStartRef.current = null;
+      queueMicrotask(() => {
+        setIntroProgress(0);
+      });
+      return;
+    }
+
+    if (introTimerRef.current) return;
+
+    const totalMs = 3000;
+    const startedAt = Date.now();
+    introStartRef.current = startedAt;
+    queueMicrotask(() => {
+      setIntroProgress(0);
+    });
+
+    introTimerRef.current = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const progress = Math.min(1, elapsed / totalMs);
+      setIntroProgress(progress);
+      if (elapsed >= totalMs) {
+        if (introTimerRef.current) {
+          window.clearInterval(introTimerRef.current);
+          introTimerRef.current = null;
+        }
+        introStartRef.current = null;
+        setIntroProgress(1);
+        window.setTimeout(() => {
+          skipIntro();
+        }, 200);
+      }
+    }, 100);
+
+    return () => {
+      if (introTimerRef.current) {
+        window.clearInterval(introTimerRef.current);
+        introTimerRef.current = null;
+      }
+      introStartRef.current = null;
+    };
+  }, [introEnd, playerPrefs.autoSkipIntro, showIntroSkip, skipIntro]);
 
   useEffect(() => {
     return () => {
@@ -434,12 +523,14 @@ export function AnimePlayer({
         window.clearInterval(outroTimerRef.current);
         outroTimerRef.current = null;
       }
+      if (introTimerRef.current) {
+        window.clearInterval(introTimerRef.current);
+        introTimerRef.current = null;
+      }
       if (overlayControlsTimerRef.current) {
         window.clearTimeout(overlayControlsTimerRef.current);
         overlayControlsTimerRef.current = null;
       }
-      sessionStorage.removeItem("anizium:resume-fullscreen");
-      sessionStorage.removeItem("anizium:resume-autoplay");
     };
   }, []);
 
@@ -483,6 +574,14 @@ export function AnimePlayer({
     }
     resumeFromRef.current = null;
     seededRef.current = true;
+
+    if (playerPrefs.autoPlay && !autoplayAttemptedRef.current) {
+      autoplayAttemptedRef.current = true;
+      queueMicrotask(() => {
+        attemptPlayerPlay(p);
+        focusPlayer();
+      });
+    }
   }
 
   function onTU(detail: MediaTimeUpdateEventDetail) {
@@ -502,26 +601,7 @@ export function AnimePlayer({
     onTimeUpdate(t, d);
   }
 
-  function skipIntro() {
-    const p = playerRef.current;
-    if (p && introEnd != null) {
-      cancelOutroAutoAdvance();
-      p.currentTime = introEnd;
-      setShowIntroSkip(false);
-    }
-  }
-
   function goNextEpisode() {
-    const isFullscreen = Boolean(document.fullscreenElement);
-    fullscreenResumePendingRef.current = isFullscreen;
-    autoplayResumePendingRef.current = isFullscreen;
-    if (typeof window !== "undefined") {
-      if (isFullscreen) sessionStorage.setItem("anizium:resume-fullscreen", "1");
-      else sessionStorage.removeItem("anizium:resume-fullscreen");
-
-      if (isFullscreen) sessionStorage.setItem("anizium:resume-autoplay", "1");
-      else sessionStorage.removeItem("anizium:resume-autoplay");
-    }
     cancelOutroAutoAdvance();
     if (onNextEpisode) {
       onNextEpisode();
@@ -532,6 +612,7 @@ export function AnimePlayer({
     }
   }
 
+  const introBarStyle = useMemo(() => ({ transform: `scaleX(${introProgress})` }), [introProgress]);
   const outroBarStyle = useMemo(() => ({ transform: `scaleX(${outroProgress})` }), [outroProgress]);
 
   const hideOverlayControls = useCallback(() => {
@@ -816,6 +897,7 @@ export function AnimePlayer({
         playsInline
         aspectRatio="16/9"
         volume={volume}
+        autoPlay={playerPrefs.autoPlay}
         onVolumeChange={(detail) => {
           cancelOutroAutoAdvance();
           localStorage.setItem(VOLUME_STORAGE_KEY, String(detail.volume));
@@ -884,11 +966,6 @@ export function AnimePlayer({
             ),
           }}
         />
-        <FullscreenResumeBridge
-          playerRef={playerRef}
-          pendingRef={fullscreenResumePendingRef}
-          autoplayPendingRef={autoplayResumePendingRef}
-        />
         {overlayTopRight && controlsVisible && (
           <div className={cn("absolute left-3 top-3 z-[60] max-w-[min(88vw,320px)] transition-opacity duration-200 opacity-100")}>
             {overlayTopRight}
@@ -908,10 +985,18 @@ export function AnimePlayer({
         {showIntroSkip && (
           <button
             onClick={skipIntro}
-            className="absolute bottom-18 right-4 z-50 flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90"
+            className="absolute bottom-18 right-4 z-50 flex overflow-hidden rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90"
             aria-label="Intro&apos;yu atla"
           >
-            <SkipForward className="h-4 w-4" /> Intro&apos;yu Atla
+            {playerPrefs.autoSkipIntro && (
+              <span
+                className="absolute inset-x-0 bottom-0 h-1 origin-left bg-white/35 transition-transform duration-100 ease-linear"
+                style={introBarStyle}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-1.5">
+              <SkipForward className="h-4 w-4" /> Intro&apos;yu Atla
+            </span>
           </button>
         )}
         {/* Outro / Next Episode Overlay */}
@@ -954,58 +1039,3 @@ export function AnimePlayer({
 }
 
 export default AnimePlayer;
-
-function FullscreenResumeBridge({
-  playerRef,
-  pendingRef,
-  autoplayPendingRef,
-}: {
-  playerRef: React.RefObject<MediaPlayerInstance | null>;
-  pendingRef: MutableRefObject<boolean>;
-  autoplayPendingRef: MutableRefObject<boolean>;
-}) {
-  useEffect(() => {
-    const p = playerRef.current;
-    if (!p) return;
-
-    const shouldRestoreFullscreen = pendingRef.current;
-    const shouldAutoplay = autoplayPendingRef.current;
-
-    pendingRef.current = false;
-    autoplayPendingRef.current = false;
-
-    if (!shouldRestoreFullscreen && !shouldAutoplay) return;
-
-    queueMicrotask(() => {
-      if (shouldRestoreFullscreen) {
-        try {
-          void p.enterFullscreen?.();
-        } catch {}
-      }
-
-      if (shouldAutoplay) {
-        queueMicrotask(() => {
-          const playerLike = p as unknown as { play?: () => Promise<void> | void; muted?: boolean };
-          try {
-            const maybePromise = playerLike.play?.();
-            if (maybePromise && typeof (maybePromise as Promise<void>).catch === "function") {
-              (maybePromise as Promise<void>).catch(() => {
-                try {
-                  playerLike.muted = true;
-                  void playerLike.play?.();
-                } catch {}
-              });
-            }
-          } catch {
-            try {
-              playerLike.muted = true;
-              void playerLike.play?.();
-            } catch {}
-          }
-        });
-      }
-    });
-  }, [autoplayPendingRef, pendingRef, playerRef]);
-
-  return null;
-}

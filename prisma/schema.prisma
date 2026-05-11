@@ -240,6 +240,7 @@ model Preference {
   theme           String  @default("dark")
   captionSettings String? // JSON blob
   autoPlay        Boolean @default(true)
+  autoSkipIntro   Boolean @default(false)
   defaultQuality  String  @default("auto")
   defaultDubLanguage String @default("ja")
 

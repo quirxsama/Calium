@@ -1,0 +1,1 @@
+ALTER TABLE "Preference" ADD COLUMN "autoSkipIntro" BOOLEAN NOT NULL DEFAULT false;
