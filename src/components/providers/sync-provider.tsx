@@ -7,15 +7,17 @@ import {
   clearPendingFavoriteClear,
   hasPendingFavoriteClear,
   readDeletedFavoriteIds,
-  readFavorites,
+  readPendingFavoriteUpserts,
   removeDeletedFavoriteIds,
+  removePendingFavoriteUpserts,
 } from "@/lib/storage/favorites";
 import {
   clearPendingHistoryClear,
   hasPendingHistoryClear,
   readDeletedHistoryIds,
-  readHistory,
+  readPendingHistoryUpserts,
   removeDeletedHistoryIds,
+  removePendingHistoryUpserts,
 } from "@/lib/storage/history";
 
 const FAVORITES_KEY = "animes:favorites";
@@ -68,13 +70,14 @@ async function flushFavorites() {
     }
   }
 
-  const local = readFavorites();
+  const local = readPendingFavoriteUpserts();
   if (local.length > 0) {
     await fetchJson("/api/sync/favorites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ favorites: local }),
     });
+    removePendingFavoriteUpserts(local.map((favorite) => favorite.id));
   }
 }
 
@@ -115,13 +118,14 @@ async function flushHistory() {
     }
   }
 
-  const local = readHistory();
+  const local = readPendingHistoryUpserts();
   if (local.length > 0) {
     await fetchJson("/api/sync/history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ history: local }),
     });
+    removePendingHistoryUpserts(local.map((entry) => entry.animeId));
   }
 }
 

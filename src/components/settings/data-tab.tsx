@@ -8,15 +8,19 @@ import {
   clearLocalFavorites,
   clearPendingFavoriteClear,
   hasPendingFavoriteClear,
+  readPendingFavoriteUpserts,
   readDeletedFavoriteIds,
   removeDeletedFavoriteIds,
+  removePendingFavoriteUpserts,
 } from "@/lib/storage/favorites";
 import {
   clearLocalHistory,
   clearPendingHistoryClear,
   hasPendingHistoryClear,
+  readPendingHistoryUpserts,
   readDeletedHistoryIds,
   removeDeletedHistoryIds,
+  removePendingHistoryUpserts,
 } from "@/lib/storage/history";
 
 async function syncFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -77,25 +81,25 @@ export function DataTab() {
       }
 
       // Push favorites
-      const favRaw = localStorage.getItem("animes:favorites");
-      if (favRaw) {
-        const favorites = JSON.parse(favRaw);
+      const favorites = readPendingFavoriteUpserts();
+      if (favorites.length > 0) {
         await syncFetch("/api/sync/favorites", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ favorites }),
         });
+        removePendingFavoriteUpserts(favorites.map((favorite) => favorite.id));
       }
 
       // Push history
-      const histRaw = localStorage.getItem("animes:history");
-      if (histRaw) {
-        const history = JSON.parse(histRaw);
+      const history = readPendingHistoryUpserts();
+      if (history.length > 0) {
         await syncFetch("/api/sync/history", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ history }),
         });
+        removePendingHistoryUpserts(history.map((entry) => entry.animeId));
       }
 
       // Pull from server

@@ -21,6 +21,7 @@ export function isEpisodeFinished(progress: number, duration: number): boolean {
 const KEY = "animes:history";
 const DELETED_KEY = "animes:history-deleted";
 const CLEAR_KEY = "animes:history-clear-requested-at";
+const UPSERT_KEY = "animes:history-upserts";
 
 function readStringArray(key: string): string[] {
   if (typeof window === "undefined") return [];
@@ -38,9 +39,18 @@ function readStringArray(key: string): string[] {
 function queueHistoryDeletion(animeId: string) {
   if (typeof window === "undefined") return;
   if (hasPendingHistoryClear()) return;
+  removePendingHistoryUpserts([animeId]);
   const deleted = new Set(readDeletedHistoryIds());
   deleted.add(animeId);
   localStorage.setItem(DELETED_KEY, JSON.stringify([...deleted]));
+}
+
+function queueHistoryUpsert(animeId: string) {
+  if (typeof window === "undefined") return;
+  if (hasPendingHistoryClear()) return;
+  const upserts = new Set(readPendingHistoryUpsertIds());
+  upserts.add(animeId);
+  localStorage.setItem(UPSERT_KEY, JSON.stringify([...upserts]));
 }
 
 export function readHistory(): HistoryEntry[] {
@@ -66,6 +76,7 @@ export function upsertHistory(entry: HistoryEntry) {
   const list = readHistory();
   const filtered = list.filter((e) => e.animeId !== entry.animeId);
   removeDeletedHistoryIds([entry.animeId]);
+  queueHistoryUpsert(entry.animeId);
   filtered.unshift(entry);
   writeHistory(filtered);
 }
@@ -84,6 +95,7 @@ export function clearHistory() {
   if (typeof window !== "undefined") {
     localStorage.setItem(CLEAR_KEY, String(Date.now()));
     localStorage.removeItem(DELETED_KEY);
+    localStorage.removeItem(UPSERT_KEY);
   }
   writeHistory([]);
 }
@@ -93,7 +105,30 @@ export function clearLocalHistory() {
   localStorage.removeItem(KEY);
   localStorage.removeItem(DELETED_KEY);
   localStorage.removeItem(CLEAR_KEY);
+  localStorage.removeItem(UPSERT_KEY);
   window.dispatchEvent(new CustomEvent("animes:history-changed"));
+}
+
+export function readPendingHistoryUpsertIds(): string[] {
+  return readStringArray(UPSERT_KEY);
+}
+
+export function readPendingHistoryUpserts(): HistoryEntry[] {
+  const upsertIds = new Set(readPendingHistoryUpsertIds());
+  if (upsertIds.size === 0) return [];
+  const deletedIds = new Set(readDeletedHistoryIds());
+  return readHistory().filter((entry) => upsertIds.has(entry.animeId) && !deletedIds.has(entry.animeId));
+}
+
+export function removePendingHistoryUpserts(ids: string[]) {
+  if (typeof window === "undefined") return;
+  const removed = new Set(ids);
+  const remaining = readPendingHistoryUpsertIds().filter((id) => !removed.has(id));
+  if (remaining.length > 0) {
+    localStorage.setItem(UPSERT_KEY, JSON.stringify(remaining));
+  } else {
+    localStorage.removeItem(UPSERT_KEY);
+  }
 }
 
 export function readDeletedHistoryIds(): string[] {
@@ -120,4 +155,5 @@ export function clearPendingHistoryClear() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(CLEAR_KEY);
   localStorage.removeItem(DELETED_KEY);
+  localStorage.removeItem(UPSERT_KEY);
 }
