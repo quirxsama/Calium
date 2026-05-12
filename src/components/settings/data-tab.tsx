@@ -4,7 +4,29 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { RefreshCw, Download, Trash2, Loader2 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-dialog";
-import { clearLocalHistory } from "@/lib/storage/history";
+import {
+  clearLocalFavorites,
+  clearPendingFavoriteClear,
+  hasPendingFavoriteClear,
+  readDeletedFavoriteIds,
+  removeDeletedFavoriteIds,
+} from "@/lib/storage/favorites";
+import {
+  clearLocalHistory,
+  clearPendingHistoryClear,
+  hasPendingHistoryClear,
+  readDeletedHistoryIds,
+  removeDeletedHistoryIds,
+} from "@/lib/storage/history";
+
+async function syncFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const res = await fetch(input, init);
+  const data = await res.json();
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error ?? "Senkronizasyon başarısız.");
+  }
+  return data;
+}
 
 export function DataTab() {
   const { user } = useAuth();
@@ -16,11 +38,49 @@ export function DataTab() {
     setSyncing(true);
     setMessage(null);
     try {
+      if (hasPendingFavoriteClear()) {
+        await syncFetch("/api/sync/favorites", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ all: true }),
+        });
+        clearPendingFavoriteClear();
+      } else {
+        const deletedFavoriteIds = readDeletedFavoriteIds();
+        if (deletedFavoriteIds.length > 0) {
+          await syncFetch("/api/sync/favorites", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ animeIds: deletedFavoriteIds }),
+          });
+          removeDeletedFavoriteIds(deletedFavoriteIds);
+        }
+      }
+
+      if (hasPendingHistoryClear()) {
+        await syncFetch("/api/sync/history", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ all: true }),
+        });
+        clearPendingHistoryClear();
+      } else {
+        const deletedHistoryIds = readDeletedHistoryIds();
+        if (deletedHistoryIds.length > 0) {
+          await syncFetch("/api/sync/history", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ animeIds: deletedHistoryIds }),
+          });
+          removeDeletedHistoryIds(deletedHistoryIds);
+        }
+      }
+
       // Push favorites
       const favRaw = localStorage.getItem("animes:favorites");
       if (favRaw) {
         const favorites = JSON.parse(favRaw);
-        await fetch("/api/sync/favorites", {
+        await syncFetch("/api/sync/favorites", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ favorites }),
@@ -31,7 +91,7 @@ export function DataTab() {
       const histRaw = localStorage.getItem("animes:history");
       if (histRaw) {
         const history = JSON.parse(histRaw);
-        await fetch("/api/sync/history", {
+        await syncFetch("/api/sync/history", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ history }),
@@ -39,12 +99,10 @@ export function DataTab() {
       }
 
       // Pull from server
-      const [favRes, histRes] = await Promise.all([
-        fetch("/api/sync/favorites"),
-        fetch("/api/sync/history"),
+      const [favData, histData] = await Promise.all([
+        syncFetch("/api/sync/favorites", { cache: "no-store" }),
+        syncFetch("/api/sync/history", { cache: "no-store" }),
       ]);
-      const favData = await favRes.json();
-      const histData = await histRes.json();
 
       if (favData.success) {
         localStorage.setItem("animes:favorites", JSON.stringify(favData.favorites));
@@ -87,11 +145,10 @@ export function DataTab() {
       variant: "danger",
     });
     if (!ok) return;
-    localStorage.removeItem("animes:favorites");
+    clearLocalFavorites();
     clearLocalHistory();
     localStorage.removeItem("animes:caption-settings");
     localStorage.removeItem("calium:player-prefs");
-    window.dispatchEvent(new CustomEvent("animes:favorites-changed"));
     setMessage({ type: "success", text: "Yerel veriler silindi." });
   }
 

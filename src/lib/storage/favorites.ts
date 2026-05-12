@@ -6,6 +6,29 @@ export type FavoriteEntry = {
 };
 
 const KEY = "animes:favorites";
+const DELETED_KEY = "animes:favorites-deleted";
+const CLEAR_KEY = "animes:favorites-clear-requested-at";
+
+function readStringArray(key: string): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function queueFavoriteDeletion(id: string) {
+  if (typeof window === "undefined") return;
+  if (hasPendingFavoriteClear()) return;
+  const deleted = new Set(readDeletedFavoriteIds());
+  deleted.add(id);
+  localStorage.setItem(DELETED_KEY, JSON.stringify([...deleted]));
+}
 
 export function readFavorites(): FavoriteEntry[] {
   if (typeof window === "undefined") return [];
@@ -33,11 +56,13 @@ export function isFavorite(id: string): boolean {
 export function addFavorite(entry: Omit<FavoriteEntry, "addedAt">) {
   const list = readFavorites();
   if (list.some((f) => f.id === entry.id)) return;
+  removeDeletedFavoriteIds([entry.id]);
   list.unshift({ ...entry, addedAt: Date.now() });
   write(list);
 }
 
 export function removeFavorite(id: string) {
+  queueFavoriteDeletion(id);
   write(readFavorites().filter((f) => f.id !== id));
 }
 
@@ -48,6 +73,42 @@ export function toggleFavorite(entry: Omit<FavoriteEntry, "addedAt">) {
 
 export function clearFavorites() {
   if (typeof window === "undefined") return;
+  localStorage.setItem(CLEAR_KEY, String(Date.now()));
+  localStorage.removeItem(DELETED_KEY);
   localStorage.removeItem(KEY);
   window.dispatchEvent(new CustomEvent("animes:favorites-changed"));
+}
+
+export function clearLocalFavorites() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(KEY);
+  localStorage.removeItem(DELETED_KEY);
+  localStorage.removeItem(CLEAR_KEY);
+  window.dispatchEvent(new CustomEvent("animes:favorites-changed"));
+}
+
+export function readDeletedFavoriteIds(): string[] {
+  return readStringArray(DELETED_KEY);
+}
+
+export function removeDeletedFavoriteIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  const removed = new Set(ids);
+  const remaining = readDeletedFavoriteIds().filter((id) => !removed.has(id));
+  if (remaining.length > 0) {
+    localStorage.setItem(DELETED_KEY, JSON.stringify(remaining));
+  } else {
+    localStorage.removeItem(DELETED_KEY);
+  }
+}
+
+export function hasPendingFavoriteClear(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(CLEAR_KEY) !== null;
+}
+
+export function clearPendingFavoriteClear() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CLEAR_KEY);
+  localStorage.removeItem(DELETED_KEY);
 }

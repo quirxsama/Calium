@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { readFavorites, clearFavorites, type FavoriteEntry } from "@/lib/storage/favorites";
+import { readFavorites, clearLocalFavorites, type FavoriteEntry } from "@/lib/storage/favorites";
 
 export function useFavorites(): FavoriteEntry[] {
   const [list, setList] = useState<FavoriteEntry[]>([]);
@@ -10,7 +10,7 @@ export function useFavorites(): FavoriteEntry[] {
     const update = () => setList(readFavorites());
     update();
 
-    const onLogout = () => { clearFavorites(); };
+    const onLogout = () => { clearLocalFavorites(); };
     if (!synced.current) {
       window.addEventListener("calium:auth-logout", onLogout);
       synced.current = true;

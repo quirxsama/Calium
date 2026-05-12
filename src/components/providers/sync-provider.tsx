@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
-import { readFavorites } from "@/lib/storage/favorites";
+import {
+  clearPendingFavoriteClear,
+  hasPendingFavoriteClear,
+  readDeletedFavoriteIds,
+  readFavorites,
+  removeDeletedFavoriteIds,
+} from "@/lib/storage/favorites";
 import {
   clearPendingHistoryClear,
   hasPendingHistoryClear,
@@ -16,7 +23,6 @@ const HISTORY_KEY = "animes:history";
 const FAVORITES_EVENT = "animes:favorites-changed";
 const HISTORY_EVENT = "animes:history-changed";
 const SYNC_DEBOUNCE_MS = 1200;
-const POLL_INTERVAL_MS = 45000;
 
 async function fetchJson(input: RequestInfo | URL, init?: RequestInit) {
   const res = await fetch(input, init);
@@ -27,7 +33,41 @@ async function fetchJson(input: RequestInfo | URL, init?: RequestInit) {
   return data;
 }
 
-async function syncFavorites() {
+function writeRemoteState(
+  key: string,
+  eventName: string,
+  value: unknown[],
+  applyingRemoteRef: MutableRefObject<boolean>
+) {
+  applyingRemoteRef.current = true;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    window.dispatchEvent(new CustomEvent(eventName));
+  } finally {
+    applyingRemoteRef.current = false;
+  }
+}
+
+async function flushFavorites() {
+  if (hasPendingFavoriteClear()) {
+    await fetchJson("/api/sync/favorites", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ all: true }),
+    });
+    clearPendingFavoriteClear();
+  } else {
+    const deletedIds = readDeletedFavoriteIds();
+    if (deletedIds.length > 0) {
+      await fetchJson("/api/sync/favorites", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ animeIds: deletedIds }),
+      });
+      removeDeletedFavoriteIds(deletedIds);
+    }
+  }
+
   const local = readFavorites();
   if (local.length > 0) {
     await fetchJson("/api/sync/favorites", {
@@ -36,15 +76,26 @@ async function syncFavorites() {
       body: JSON.stringify({ favorites: local }),
     });
   }
+}
 
+async function pullFavorites(applyingRemoteRef: MutableRefObject<boolean>) {
   const data = await fetchJson("/api/sync/favorites", { cache: "no-store" });
   if (data.success && Array.isArray(data.favorites)) {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(data.favorites));
-    window.dispatchEvent(new CustomEvent(FAVORITES_EVENT));
+    if (hasPendingFavoriteClear()) return;
+    const deletedIds = new Set(readDeletedFavoriteIds());
+    const favorites = data.favorites.filter((favorite: { id?: unknown }) => {
+      return typeof favorite.id === "string" && !deletedIds.has(favorite.id);
+    });
+    writeRemoteState(FAVORITES_KEY, FAVORITES_EVENT, favorites, applyingRemoteRef);
   }
 }
 
-async function syncHistory() {
+async function syncFavoritesFromServer(applyingRemoteRef: MutableRefObject<boolean>) {
+  await flushFavorites();
+  await pullFavorites(applyingRemoteRef);
+}
+
+async function flushHistory() {
   if (hasPendingHistoryClear()) {
     await fetchJson("/api/sync/history", {
       method: "DELETE",
@@ -72,19 +123,32 @@ async function syncHistory() {
       body: JSON.stringify({ history: local }),
     });
   }
+}
 
+async function pullHistory(applyingRemoteRef: MutableRefObject<boolean>) {
   const data = await fetchJson("/api/sync/history", { cache: "no-store" });
   if (data.success && Array.isArray(data.history)) {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(data.history));
-    window.dispatchEvent(new CustomEvent(HISTORY_EVENT));
+    if (hasPendingHistoryClear()) return;
+    const deletedIds = new Set(readDeletedHistoryIds());
+    const history = data.history.filter((entry: { animeId?: unknown }) => {
+      return typeof entry.animeId === "string" && !deletedIds.has(entry.animeId);
+    });
+    writeRemoteState(HISTORY_KEY, HISTORY_EVENT, history, applyingRemoteRef);
   }
+}
+
+async function syncHistoryFromServer(applyingRemoteRef: MutableRefObject<boolean>) {
+  await flushHistory();
+  await pullHistory(applyingRemoteRef);
 }
 
 export function SyncProvider() {
   const { user, loading } = useAuth();
+  const pathname = usePathname();
   const favoritesTimerRef = useRef<number | null>(null);
   const historyTimerRef = useRef<number | null>(null);
-  const runningRef = useRef(false);
+  const applyingRemoteRef = useRef(false);
+  const operationRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (loading || !user) return;
@@ -100,52 +164,64 @@ export function SyncProvider() {
       }
     };
 
-    const runSync = async () => {
-      if (runningRef.current) return;
-      runningRef.current = true;
-      try {
-        await Promise.allSettled([syncFavorites(), syncHistory()]);
-      } finally {
-        runningRef.current = false;
-      }
+    const enqueueOperation = (operation: () => Promise<void>) => {
+      const nextOperation = operationRef.current
+        .catch(() => undefined)
+        .then(operation)
+        .catch(() => undefined);
+      operationRef.current = nextOperation;
+      return nextOperation;
+    };
+
+    const runLocalPush = () => {
+      return enqueueOperation(async () => {
+        await Promise.allSettled([flushFavorites(), flushHistory()]);
+      });
+    };
+
+    const runServerPull = () => {
+      return enqueueOperation(async () => {
+        await Promise.allSettled([
+          syncFavoritesFromServer(applyingRemoteRef),
+          syncHistoryFromServer(applyingRemoteRef),
+        ]);
+      });
     };
 
     const scheduleFavoritesSync = () => {
+      if (applyingRemoteRef.current) return;
       if (favoritesTimerRef.current) window.clearTimeout(favoritesTimerRef.current);
       favoritesTimerRef.current = window.setTimeout(() => {
         favoritesTimerRef.current = null;
-        void runSync();
+        void runLocalPush();
       }, SYNC_DEBOUNCE_MS);
     };
 
     const scheduleHistorySync = () => {
+      if (applyingRemoteRef.current) return;
       if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
       historyTimerRef.current = window.setTimeout(() => {
         historyTimerRef.current = null;
-        void runSync();
+        void runLocalPush();
       }, SYNC_DEBOUNCE_MS);
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         clearTimers();
-        void runSync();
+        void runLocalPush();
       }
     };
 
     const handleOnline = () => {
-      void runSync();
+      void runLocalPush();
     };
 
     const handleBeforeUnload = () => {
-      void runSync();
+      void runLocalPush();
     };
 
-    void runSync();
-
-    const pollId = window.setInterval(() => {
-      void runSync();
-    }, POLL_INTERVAL_MS);
+    void runServerPull();
 
     window.addEventListener(FAVORITES_EVENT, scheduleFavoritesSync);
     window.addEventListener(HISTORY_EVENT, scheduleHistorySync);
@@ -155,14 +231,13 @@ export function SyncProvider() {
 
     return () => {
       clearTimers();
-      window.clearInterval(pollId);
       window.removeEventListener(FAVORITES_EVENT, scheduleFavoritesSync);
       window.removeEventListener(HISTORY_EVENT, scheduleHistorySync);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [loading, user]);
+  }, [loading, user, pathname]);
 
   return null;
 }
