@@ -69,6 +69,11 @@ export async function aniziumFetch<T = unknown>(
 ): Promise<T> {
   // Cloudflare Worker üzerinden proxy — VPS IP bloklamasını aşar
   if (WORKER_URL) {
+    console.info("[anizium] using worker proxy", {
+      path,
+      hasProxyKey: Boolean(PROXY_KEY),
+      revalidate: opts.revalidate,
+    });
     return aniziumFetchViaWorker<T>(path, opts);
   }
 
@@ -100,6 +105,12 @@ export async function aniziumFetch<T = unknown>(
       }
       if (!res.ok) {
         lastErr = new Error(`HTTP ${res.status} @ ${url}`);
+        console.warn("[anizium] upstream non-ok response", {
+          path,
+          domain,
+          status: res.status,
+          retriable: res.status >= 500 || res.status === 403,
+        });
         if (res.status >= 500 || res.status === 403) continue;
         throw lastErr;
       }
@@ -107,6 +118,11 @@ export async function aniziumFetch<T = unknown>(
       return data;
     } catch (e) {
       lastErr = e;
+      console.warn("[anizium] upstream fetch failed", {
+        path,
+        domain,
+        error: e instanceof Error ? e.message : String(e),
+      });
       continue;
     }
   }
@@ -146,6 +162,11 @@ async function aniziumFetchViaWorker<T = unknown>(
 
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
+    console.warn("[anizium] worker non-ok response", {
+      path,
+      status: res.status,
+      error: body.error,
+    });
     throw new Error(body.error || `HTTP ${res.status}`);
   }
 

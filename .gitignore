@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+.tmp/
 
 # debug
 npm-debug.log*
@@ -48,3 +49,4 @@ prisma/data/
 /data/
 
 .roo
+.roomodes

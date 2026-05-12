@@ -6,6 +6,8 @@
     "dev": "next dev",
     "dev:turbo": "next dev",
     "dev:ws": "NODE_ENV=development node server.mjs",
+    "proxy:anizium": "node --env-file=.env.local scripts/anizium-proxy.mjs",
+    "tunnel:anizium": "./.tmp/bin/cloudflared tunnel --url http://127.0.0.1:8787",
     "build": "next build",
     "start": "next start",
     "start:ws": "NODE_ENV=production node server.mjs",

@@ -10,6 +10,13 @@ export async function GET(
     const data = await getAnimeDetails(id);
     return NextResponse.json(data);
   } catch (e) {
+    console.error("[api/anizium/anime] detail fetch failed", {
+      id,
+      message: e instanceof Error ? e.message : String(e),
+      hasWorkerUrl: Boolean(process.env.ANIZIUM_WORKER_URL),
+      hasCfControl: Boolean(process.env.ANIZIUM_CF_CONTROL),
+      hasUserSession: Boolean(process.env.ANIZIUM_USER_SESSION),
+    });
     return NextResponse.json(
       { success: false, error: (e as Error).message },
       { status: 502 }
