@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import type { Metadata } from "next";
 import { CalendarDays, Clock3, Clapperboard, Radio, Sparkles } from "lucide-react";
 import { getCalendar } from "@/lib/anizium/endpoints";
@@ -112,7 +112,7 @@ function CalendarCard({ item }: { item: CalendarContent }) {
     >
       <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-[var(--muted)]">
         {poster ? (
-          <Image
+          <AniziumImage
             src={poster}
             alt={item.content.name}
             fill

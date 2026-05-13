@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { useAuth } from "@/lib/auth/context";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import { Heart, Loader2, Lock, Trash2, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -158,7 +158,7 @@ export default function ListDetailPage() {
             <div key={item.id} className="group relative">
               <Link href={`/anime/${item.animeId}`} className="block overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] transition hover:border-[var(--primary)]/30 hover:shadow-lg">
                 {item.poster ? (
-                  <Image
+                  <AniziumImage
                     src={item.poster}
                     alt={item.name}
                     width={200}

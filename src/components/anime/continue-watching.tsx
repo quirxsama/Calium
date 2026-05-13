@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import Image from "next/image";
 import { useRef } from "react";
+import { AniziumImage } from "./anizium-image";
 import { Play, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
 import { isEpisodeFinished, removeHistoryItem } from "@/lib/storage/history";
@@ -45,7 +45,7 @@ export function ContinueWatching() {
               >
                 <div className="group relative aspect-[2/3] w-full bg-[var(--muted)] overflow-hidden">
                   {h.poster && (
-                    <Image src={h.poster} alt={h.animeName} fill sizes="(min-width: 768px) 192px, 176px" className="object-cover transition group-hover:scale-105" />
+                    <AniziumImage src={h.poster} alt={h.animeName} fill sizes="(min-width: 768px) 192px, 176px" className="object-cover transition group-hover:scale-105" />
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">

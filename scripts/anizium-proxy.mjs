@@ -1,38 +1,69 @@
-import http from "node:http";
+import http from "http";
+import { Readable } from "stream";
 
-const PORT = Number(process.env.ANIZIUM_PROXY_PORT || process.env.PORT || 8787);
-const HOST = process.env.ANIZIUM_PROXY_HOST || "127.0.0.1";
-const PROXY_KEY = process.env.ANIZIUM_PROXY_KEY || "";
+const PORT = process.env.PORT || 3002;
+const API_KEY = process.env.PROXY_API_KEY || "";
 
-const DOMAIN_LIST_URL =
-  "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt";
-const FALLBACK_DOMAIN = process.env.ANIZIUM_FALLBACK_DOMAIN || "https://api.anizium.co";
-const CF_CONTROL = process.env.ANIZIUM_CF_CONTROL || "";
-const USER_SESSION = process.env.ANIZIUM_USER_SESSION || "";
+const CF_CONTROL =
+  process.env.ANIZIUM_CF_CONTROL ||
+  "134e4c040840015655080906544d030f004b4c075b54500f";
+
+const USER_SESSION =
+  process.env.ANIZIUM_USER_SESSION ||
+  "01570d01545f55510102040f525d390e00094f0556514e2d1d5201580100071e030350115a53534c05550f535143455c085c54101215";
+
 const USER_AGENT =
   process.env.ANIZIUM_USER_AGENT ||
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+
+const FALLBACK_DOMAIN =
+  process.env.ANIZIUM_FALLBACK_DOMAIN || "https://api.anizium.co";
+
+const DOMAIN_LIST_URL =
+  "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt";
+
 const ORIGIN = "https://x.anizium.co";
-const DOMAIN_CACHE_TTL_MS = Number(process.env.ANIZIUM_DOMAIN_CACHE_TTL_MS || 300_000);
 
-let cachedDomains = { list: [FALLBACK_DOMAIN], at: 0 };
+const ALLOWED_ASSET_HOSTS = new Set([
+  "x.anizium.co",
+  "api.anizium.co",
+  "anizium.co",
+  "anizium.com",
+  "anizium.net",
+  "anizium.org",
+]);
 
-function json(res, status, body) {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-    "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type, x-proxy-key",
-  });
-  res.end(payload);
+const ASSET_CACHE_CONTROL =
+  process.env.ANIZIUM_ASSET_CACHE_CONTROL || "public, max-age=86400, stale-while-revalidate=604800";
+
+let cachedDomains = null;
+let cachedAt = 0;
+const DOMAIN_TTL = 300_000;
+
+async function fetchDomainList() {
+  const now = Date.now();
+  if (cachedDomains && now - cachedAt < DOMAIN_TTL) return cachedDomains;
+  try {
+    const res = await fetch(DOMAIN_LIST_URL);
+    if (!res.ok) throw new Error("domain list failed");
+    const text = await res.text();
+    const list = text
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => (s.startsWith("http") ? s : `https://${s}`))
+      .map((s) => s.replace(/\/$/, ""));
+    cachedDomains = Array.from(new Set([...list, FALLBACK_DOMAIN]));
+    cachedAt = now;
+    return cachedDomains;
+  } catch {
+    cachedDomains = [FALLBACK_DOMAIN];
+    cachedAt = Date.now();
+    return cachedDomains;
+  }
 }
 
 function buildHeaders() {
-  if (!CF_CONTROL || !USER_SESSION) {
-    throw new Error("ANIZIUM_CF_CONTROL ve ANIZIUM_USER_SESSION env değişkenleri zorunlu.");
-  }
-
   return {
     "cf-control": CF_CONTROL,
     "user-agent": USER_AGENT,
@@ -47,105 +78,179 @@ function buildHeaders() {
   };
 }
 
-async function fetchDomainList() {
-  const now = Date.now();
-  if (now - cachedDomains.at < DOMAIN_CACHE_TTL_MS) return cachedDomains.list;
-
-  try {
-    const response = await fetch(DOMAIN_LIST_URL, { cache: "no-store" });
-    if (!response.ok) throw new Error(`domain list HTTP ${response.status}`);
-    const text = await response.text();
-    const list = text
-      .split("|")
-      .map((domain) => domain.trim())
-      .filter(Boolean)
-      .map((domain) => (domain.startsWith("http") ? domain : `https://${domain}`))
-      .map((domain) => domain.replace(/\/$/, ""));
-    cachedDomains = { list: Array.from(new Set([...list, FALLBACK_DOMAIN])), at: now };
-  } catch (error) {
-    console.error("Domain listesi alınamadı, fallback kullanılacak:", error);
-    cachedDomains = { list: [FALLBACK_DOMAIN], at: now };
-  }
-
-  return cachedDomains.list;
+function isAllowedAssetUrl(url) {
+  return (
+    (url.protocol === "https:" || url.protocol === "http:") &&
+    (ALLOWED_ASSET_HOSTS.has(url.hostname) ||
+      url.hostname.endsWith(".anizium.co") ||
+      url.hostname.endsWith(".anizium.com") ||
+      url.hostname.endsWith(".anizium.net") ||
+      url.hostname.endsWith(".anizium.org"))
+  );
 }
 
-async function fetchUpstream(pathAndQuery) {
-  const domains = await fetchDomainList();
-  const headers = buildHeaders();
-  let lastError = null;
+function buildAssetHeaders(req) {
+  return {
+    ...buildHeaders(),
+    accept: req.headers.accept || "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "sec-fetch-dest": "image",
+  };
+}
 
-  for (const domain of domains) {
-    const upstreamUrl = `${domain}${pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+function inferContentType(pathname) {
+  const ext = pathname.toLowerCase().split(".").pop();
+  switch (ext) {
+    case "webp":
+      return "image/webp";
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "gif":
+      return "image/gif";
+    case "svg":
+      return "image/svg+xml; charset=utf-8";
+    case "vtt":
+      return "text/vtt; charset=utf-8";
+    case "srt":
+      return "application/x-subrip; charset=utf-8";
+    case "ass":
+      return "text/plain; charset=utf-8";
+    default:
+      return "application/octet-stream";
+  }
+}
 
-    try {
-      const response = await fetch(upstreamUrl, {
-        headers,
-        signal: controller.signal,
-        cache: "no-store",
-      });
-      const text = await response.text();
-      let body;
-      try {
-        body = text ? JSON.parse(text) : null;
-      } catch {
-        body = { raw: text };
-      }
+async function proxyAsset(targetUrl, req, res) {
+  if (!isAllowedAssetUrl(targetUrl)) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ success: false, error: "Invalid asset url" }));
+    return;
+  }
 
-      if (!response.ok) {
-        lastError = new Error(`HTTP ${response.status} @ ${upstreamUrl}`);
-        if (response.status >= 500 || response.status === 403) continue;
-        return { status: response.status, body };
-      }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const headers = buildAssetHeaders(req);
+    if (req.headers.range) headers.range = req.headers.range;
+    const upstream = await fetch(targetUrl, {
+      headers,
+      signal: controller.signal,
+    });
 
-      return { status: response.status, body };
-    } catch (error) {
-      lastError = error;
-    } finally {
-      clearTimeout(timeout);
+    if (!upstream.ok) {
+      res.writeHead(upstream.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: `HTTP ${upstream.status}` }));
+      return;
     }
-  }
 
-  throw lastError || new Error("Tüm Anizium domainleri başarısız oldu.");
-}
+    const responseHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": ASSET_CACHE_CONTROL,
+      "Content-Type": upstream.headers.get("content-type") || inferContentType(targetUrl.pathname),
+    };
+    for (const header of ["content-length", "accept-ranges", "content-range", "etag", "last-modified"]) {
+      const value = upstream.headers.get(header);
+      if (value) responseHeaders[header] = value;
+    }
 
-const server = http.createServer(async (req, res) => {
-  try {
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "access-control-allow-origin": "*",
-        "access-control-allow-headers": "content-type, x-proxy-key",
-        "access-control-allow-methods": "GET, OPTIONS",
-      });
+    res.writeHead(upstream.status, responseHeaders);
+    if (!upstream.body) {
       res.end();
       return;
     }
-
-    if (req.method !== "GET") {
-      json(res, 405, { error: "Sadece GET desteklenir." });
-      return;
-    }
-
-    if (req.url === "/health") {
-      json(res, 200, { success: true, service: "anizium-proxy" });
-      return;
-    }
-
-    if (PROXY_KEY && req.headers["x-proxy-key"] !== PROXY_KEY) {
-      json(res, 401, { error: "Geçersiz proxy anahtarı." });
-      return;
-    }
-
-    const { status, body } = await fetchUpstream(req.url || "/");
-    json(res, status, body);
-  } catch (error) {
-    console.error("Proxy isteği başarısız:", error);
-    json(res, 502, { error: error instanceof Error ? error.message : "Proxy hatası" });
+    Readable.fromWeb(upstream.body).pipe(res);
+  } catch (e) {
+    res.writeHead(502, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ success: false, error: e?.message || "Asset proxy failed" }));
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+const server = http.createServer(async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  // Basit API key kontrolü
+  if (API_KEY) {
+    const key = req.headers["x-proxy-key"];
+    if (key !== API_KEY) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ success: false, error: "Unauthorized" }));
+      return;
+    }
+  }
+
+  if (req.method !== "GET") {
+    res.writeHead(405);
+    res.end(JSON.stringify({ success: false, error: "Method not allowed" }));
+    return;
+  }
+
+  const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const path = req.url || "/";
+
+  if (requestUrl.pathname === "/__asset") {
+    const rawUrl = requestUrl.searchParams.get("url");
+    if (!rawUrl) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: "url gerekli" }));
+      return;
+    }
+    await proxyAsset(new URL(rawUrl), req, res);
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/assets/")) {
+    await proxyAsset(new URL(`${ORIGIN}${requestUrl.pathname}${requestUrl.search}`), req, res);
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/json");
+
+  const domains = await fetchDomainList();
+  const headers = buildHeaders();
+
+  let lastErr = null;
+  for (const domain of domains) {
+    const url = `${domain}${path.startsWith("/") ? path : "/" + path}`;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12_000);
+      const upstream = await fetch(url, {
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!upstream.ok) {
+        lastErr = new Error(`HTTP ${upstream.status} @ ${url}`);
+        if (upstream.status >= 500 || upstream.status === 403) continue;
+        res.writeHead(upstream.status);
+        res.end(JSON.stringify({ success: false, error: lastErr.message }));
+        return;
+      }
+
+      const data = await upstream.json();
+      res.writeHead(200);
+      res.end(JSON.stringify(data));
+      return;
+    } catch (e) {
+      lastErr = e;
+      continue;
+    }
+  }
+
+  res.writeHead(502);
+  res.end(
+    JSON.stringify({
+      success: false,
+      error: lastErr?.message || "All domains failed",
+    })
+  );
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`Anizium proxy http://${HOST}:${PORT} üzerinde çalışıyor.`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Anizium proxy running on port ${PORT}`);
 });

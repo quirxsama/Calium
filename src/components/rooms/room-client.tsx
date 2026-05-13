@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import type { MediaPlayerInstance } from "@vidstack/react";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import { AnimePlayer } from "@/components/player/anime-player";
 import { RoomChat, type ChatLine } from "@/components/rooms/room-chat";
 import { useRoomSocket, type PlaybackEvent } from "@/lib/realtime/room";
@@ -1485,7 +1486,7 @@ function EpisodePickerPanel({
               >
                 <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg bg-[var(--muted)] sm:h-20 sm:w-36">
                   {ep.banner_link ? (
-                    <Image src={ep.banner_link} alt={ep.name} fill sizes="144px" className="object-cover transition group-hover:scale-105" />
+                    <AniziumImage src={ep.banner_link} alt={ep.name} fill sizes="144px" className="object-cover transition group-hover:scale-105" />
                   ) : null}
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100">
                     <Play className="h-6 w-6 fill-white text-white" />

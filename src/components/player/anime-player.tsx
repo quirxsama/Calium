@@ -26,6 +26,7 @@ import { TURKISH_TRANSLATIONS } from "./translations";
 import { AudioTrackMenuItem, CaptionStyleSubmenu, QualityMenuItem } from "./player-menus";
 import { useCaptionSettings } from "@/hooks/use-caption-settings";
 import { buildCaptionCssVars } from "@/lib/storage/caption-settings";
+import { toAniziumAssetProxyUrl } from "@/lib/anizium/asset-proxy";
 import { cn } from "@/lib/utils";
 import { MobileSeekOverlay } from "./mobile-seek-overlay";
 import { GestureHint } from "./gesture-hint";
@@ -324,9 +325,10 @@ export function AnimePlayer({
     (async () => {
       const resolved = await Promise.all(
         subtitles.map(async (sub) => {
-          if (!isSrtLink(sub.link)) return sub;
+          const link = toAniziumAssetProxyUrl(sub.link);
+          if (!isSrtLink(link)) return { ...sub, link };
           try {
-            const res = await fetch(sub.link);
+            const res = await fetch(link);
             if (!res.ok) return sub;
             const text = await res.text();
             const vtt = srtToVtt(text);
@@ -930,7 +932,7 @@ export function AnimePlayer({
           {resolvedSubtitles.map((sub, i) => (
             <Track
               key={`${sub.name}-${i}`}
-              src={sub.link}
+              src={toAniziumAssetProxyUrl(sub.link)}
               kind="subtitles"
               label={sub.name}
               language={isTurkish(sub.name) ? "tr" : "en"}

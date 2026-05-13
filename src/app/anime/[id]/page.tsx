@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
-import Image from "next/image";
 import Link from "next/link";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import { notFound } from "next/navigation";
 import { getAnimeDetails, getCalendar, getSimilarAnimes, getTMDBCredits } from "@/lib/anizium/endpoints";
 import { SeasonTabs } from "@/components/anime/season-tabs";
@@ -231,7 +231,7 @@ export default async function AnimeDetailPage({
       {/* Banner */}
       <div className="relative h-[55vh] min-h-[360px] w-full overflow-hidden">
         {details.details_banner ? (
-          <Image
+          <AniziumImage
             src={details.details_banner}
             alt={details.name}
             fill
@@ -257,7 +257,7 @@ export default async function AnimeDetailPage({
                 />
               ) : (
                 <div className="relative aspect-[2/3] w-[160px] md:w-[224px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
-                  <Image src={details.poster} alt={details.name} fill sizes="240px" className="object-cover" />
+                  <AniziumImage src={details.poster} alt={details.name} fill sizes="240px" className="object-cover" />
                 </div>
               )}
             </div>
@@ -364,7 +364,7 @@ export default async function AnimeDetailPage({
                 >
                   <div className="relative h-16 w-16 overflow-hidden rounded-full bg-[var(--card)] border border-[var(--border)]">
                     {char.link ? (
-                      <Image src={char.link} alt={char.name} fill sizes="64px" className="object-cover" />
+                      <AniziumImage src={char.link} alt={char.name} fill sizes="64px" className="object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[10px] text-[var(--muted-foreground)]">?</div>
                     )}

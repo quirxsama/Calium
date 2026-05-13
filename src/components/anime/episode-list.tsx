@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import { AniziumImage } from "./anizium-image";
 import {
   ArrowDownAZ,
   ArrowUpAZ,
@@ -284,7 +284,7 @@ function UpcomingEpisodeRow({
         <div className="flex cursor-not-allowed gap-2 rounded-lg border border-dashed border-[var(--primary)]/40 bg-[var(--primary)]/5 p-2 text-sm opacity-90">
           <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded bg-[var(--muted)]">
             {upcoming.image && (
-              <Image src={upcoming.image} alt="Yaklaşan bölüm" fill sizes="96px" className="object-cover opacity-70" />
+              <AniziumImage src={upcoming.image} alt="Yaklaşan bölüm" fill sizes="96px" className="object-cover opacity-70" />
             )}
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] font-semibold text-white">
               Yakında
@@ -305,7 +305,7 @@ function UpcomingEpisodeRow({
       <div className="group flex cursor-not-allowed gap-3 rounded-xl border border-dashed border-[var(--primary)]/40 bg-[var(--primary)]/5 p-2 opacity-90">
         <div className="relative h-20 w-36 shrink-0 overflow-hidden rounded-lg bg-[var(--muted)]">
           {upcoming.image && (
-            <Image src={upcoming.image} alt="Yaklaşan bölüm" fill sizes="144px" className="object-cover opacity-70" />
+            <AniziumImage src={upcoming.image} alt="Yaklaşan bölüm" fill sizes="144px" className="object-cover opacity-70" />
           )}
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-semibold text-white">
             Yakında
@@ -347,7 +347,7 @@ function EpisodeRow({
         >
           <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded bg-[var(--muted)]">
             {ep.banner_link && (
-              <Image
+              <AniziumImage
                 src={ep.banner_link}
                 alt={ep.name}
                 fill
@@ -387,7 +387,7 @@ function EpisodeRow({
       >
         <div className="relative h-20 w-36 shrink-0 overflow-hidden rounded-lg bg-[var(--muted)]">
           {ep.banner_link && (
-            <Image
+            <AniziumImage
               src={ep.banner_link}
               alt={ep.name}
               fill

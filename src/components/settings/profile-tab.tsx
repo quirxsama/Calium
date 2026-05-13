@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect } from "react";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth/context";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import { Loader2, Save, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 
 export function ProfileTab() {
@@ -300,7 +301,7 @@ export function ProfileTab() {
                     >
                       <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-[var(--muted)]">
                         {r.poster ? (
-                          <Image src={r.poster} alt={r.name} fill sizes="40px" className="object-cover" />
+                          <AniziumImage src={r.poster} alt={r.name} fill sizes="40px" className="object-cover" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-[10px] text-[var(--muted-foreground)]">?</div>
                         )}
@@ -364,7 +365,7 @@ export function ProfileTab() {
                               : "border-[var(--border)] hover:border-[var(--primary)]/50"
                           }`}
                         >
-                          <Image
+                          <AniziumImage
                             src={preset.link}
                             alt={preset.name}
                             fill

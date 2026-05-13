@@ -9,6 +9,7 @@ import {
   WORKER_URL,
   PROXY_KEY,
 } from "./constants";
+import { isAniziumAssetUrl } from "./asset-proxy";
 
 function buildHeaders() {
   if (!CF_CONTROL || !USER_SESSION) {
@@ -61,6 +62,10 @@ async function fetchDomainList(): Promise<string[]> {
 export type AniziumFetchOpts = {
   revalidate?: number;
   signal?: AbortSignal;
+};
+
+export type AniziumAssetFetchOpts = AniziumFetchOpts & {
+  headers?: HeadersInit;
 };
 
 export async function aniziumFetch<T = unknown>(
@@ -172,6 +177,83 @@ async function aniziumFetchViaWorker<T = unknown>(
 
   const data = (await res.json()) as T;
   return data;
+}
+
+export async function aniziumAssetFetch(
+  assetUrl: string,
+  opts: AniziumAssetFetchOpts = {}
+): Promise<Response> {
+  if (!isAniziumAssetUrl(assetUrl)) {
+    throw new Error("Geçersiz Anizium asset URL'i");
+  }
+
+  if (WORKER_URL) {
+    return aniziumAssetFetchViaWorker(assetUrl, opts);
+  }
+
+  const controller = new AbortController();
+  const signals = [opts.signal, controller.signal].filter(Boolean) as AbortSignal[];
+  const combinedSignal =
+    signals.length > 1
+      ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ??
+        controller.signal
+      : (signals[0] ?? controller.signal);
+  const to = setTimeout(() => controller.abort(), 20_000);
+
+  try {
+    const headers = new Headers(buildHeaders());
+    headers.set("accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,text/vtt,text/plain,*/*;q=0.8");
+    headers.set("sec-fetch-dest", "image");
+    if (opts.headers) {
+      new Headers(opts.headers).forEach((value, key) => headers.set(key, value));
+    }
+    const res = await fetch(assetUrl, {
+      headers,
+      signal: combinedSignal,
+      next:
+        typeof opts.revalidate === "number"
+          ? { revalidate: opts.revalidate }
+          : undefined,
+      cache: opts.revalidate === 0 ? "no-store" : undefined,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+async function aniziumAssetFetchViaWorker(
+  assetUrl: string,
+  opts: AniziumAssetFetchOpts = {}
+): Promise<Response> {
+  const url = `${WORKER_URL}/__asset?url=${encodeURIComponent(assetUrl)}`;
+  const controller = new AbortController();
+  const signals = [opts.signal, controller.signal].filter(Boolean) as AbortSignal[];
+  const combinedSignal =
+    signals.length > 1
+      ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ??
+        controller.signal
+      : (signals[0] ?? controller.signal);
+  const to = setTimeout(() => controller.abort(), 20_000);
+
+  try {
+    const proxyHeaders = new Headers(opts.headers);
+    if (PROXY_KEY) proxyHeaders.set("x-proxy-key", PROXY_KEY);
+    const res = await fetch(url, {
+      headers: proxyHeaders,
+      signal: combinedSignal,
+      next:
+        typeof opts.revalidate === "number"
+          ? { revalidate: opts.revalidate }
+          : undefined,
+      cache: opts.revalidate === 0 ? "no-store" : undefined,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
+  } finally {
+    clearTimeout(to);
+  }
 }
 
 export { fetchDomainList };

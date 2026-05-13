@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import { AniziumImage } from "./anizium-image";
 import { Play, Star } from "lucide-react";
 import { cn, formatAnimeType } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ export function AnimeCard({ id, name, poster, imdb, badge, className, type }: Pr
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-[var(--muted)]">
         {poster ? (
-          <Image
+          <AniziumImage
             src={poster}
             alt={name}
             fill

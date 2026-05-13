@@ -1,5 +1,6 @@
 import { aniziumFetch } from "./client";
 import { CACHE_TTL } from "./constants";
+import { toAniziumAssetProxyUrl } from "./asset-proxy";
 import {
   ApiResponseSchema,
   AnimeDetailsResponseSchema,
@@ -15,20 +16,104 @@ import {
   type TMDBCredits,
 } from "./schemas";
 
+function proxyAnimeDataAssets<T extends { poster?: string | null }>(anime: T): T {
+  return {
+    ...anime,
+    poster: toAniziumAssetProxyUrl(anime.poster),
+  };
+}
+
+function proxyApiResponseAssets(response: ApiResponse): ApiResponse {
+  return {
+    ...response,
+    page: {
+      ...response.page,
+      data: response.page.data.map(proxyAnimeDataAssets),
+    },
+  };
+}
+
+function proxyLatestResponseAssets(response: LatestEpisodeResponse): LatestEpisodeResponse {
+  return {
+    ...response,
+    page: {
+      ...response.page,
+      data: response.page.data.map(proxyAnimeDataAssets),
+    },
+  };
+}
+
+function proxyCalendarResponseAssets(response: CalendarResponse): CalendarResponse {
+  return {
+    ...response,
+    data: response.data.map((day) => ({
+      ...day,
+      contents: day.contents.map((item) => ({
+        ...item,
+        content: {
+          ...item.content,
+          logo: toAniziumAssetProxyUrl(item.content.logo),
+          banner: toAniziumAssetProxyUrl(item.content.banner),
+          details_banner: toAniziumAssetProxyUrl(item.content.details_banner),
+          poster: toAniziumAssetProxyUrl(item.content.poster),
+        },
+      })),
+    })),
+  };
+}
+
+function proxyAnimeDetailsAssets(response: AnimeDetailsResponse): AnimeDetailsResponse {
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      banner: toAniziumAssetProxyUrl(response.data.banner),
+      details_banner: toAniziumAssetProxyUrl(response.data.details_banner),
+      logo: toAniziumAssetProxyUrl(response.data.logo),
+      poster: toAniziumAssetProxyUrl(response.data.poster),
+      studios: response.data.studios.map((studio) => ({
+        ...studio,
+        logo: toAniziumAssetProxyUrl(studio.logo),
+      })),
+      avatar: response.data.avatar.map((avatar) => ({
+        ...avatar,
+        link: toAniziumAssetProxyUrl(avatar.link),
+      })),
+      seasons: response.data.seasons.map((season) => ({
+        ...season,
+        episodes: season.episodes.map((episode) => ({
+          ...episode,
+          banner_link: toAniziumAssetProxyUrl(episode.banner_link),
+        })),
+      })),
+    },
+  };
+}
+
+function proxySourceResponseAssets(response: SourceResponse): SourceResponse {
+  return {
+    ...response,
+    subtitles: response.subtitles.map((subtitle) => ({
+      ...subtitle,
+      link: toAniziumAssetProxyUrl(subtitle.link),
+    })),
+  };
+}
+
 // ---- Listeleme endpoint'leri ----
 
 export async function getLatestEpisodes(page = 1): Promise<LatestEpisodeResponse> {
   const raw = await aniziumFetch(`/page/last-added-episodes?page=${page}`, {
     revalidate: CACHE_TTL.latest,
   });
-  return LatestEpisodeResponseSchema.parse(raw);
+  return proxyLatestResponseAssets(LatestEpisodeResponseSchema.parse(raw));
 }
 
 export async function getCalendar(): Promise<CalendarResponse> {
   const raw = await aniziumFetch("/page/calendar", {
     revalidate: CACHE_TTL.calendar,
   });
-  return CalendarResponseSchema.parse(raw);
+  return proxyCalendarResponseAssets(CalendarResponseSchema.parse(raw));
 }
 
 export type CatalogKind = "series" | "movie" | "trdub" | "genre";
@@ -53,7 +138,7 @@ export async function getCatalog(
       break;
   }
   const raw = await aniziumFetch(url, { revalidate: CACHE_TTL.catalog });
-  return ApiResponseSchema.parse(raw);
+  return proxyApiResponseAssets(ApiResponseSchema.parse(raw));
 }
 
 export async function getTop(page = 1): Promise<ApiResponse> {
@@ -61,14 +146,14 @@ export async function getTop(page = 1): Promise<ApiResponse> {
     `/page/top?platform=favorite&page=${page}`,
     { revalidate: CACHE_TTL.top }
   );
-  return ApiResponseSchema.parse(raw);
+  return proxyApiResponseAssets(ApiResponseSchema.parse(raw));
 }
 
 export async function getAnimeDetails(id: string): Promise<AnimeDetailsResponse> {
   const raw = await aniziumFetch(`/anime/get?id=${encodeURIComponent(id)}`, {
     revalidate: CACHE_TTL.detail,
   });
-  return AnimeDetailsResponseSchema.parse(raw);
+  return proxyAnimeDetailsAssets(AnimeDetailsResponseSchema.parse(raw));
 }
 
 // ---- Arama (doküman belirsiz — iki varyant dene) ----
@@ -97,7 +182,7 @@ async function trySearch(term: string, page: number): Promise<ApiResponse | null
     const raw = await aniziumFetch(`/page/search?value=${q}&page=${page}`, {
       revalidate: CACHE_TTL.search,
     });
-    return ApiResponseSchema.parse(raw);
+    return proxyApiResponseAssets(ApiResponseSchema.parse(raw));
   } catch (e) {
     const msg = (e as Error)?.message ?? "";
     // Anizium "sonuç yok" durumunda HTTP 400 döner — bu bir hata değil, boş sonuç.
@@ -139,7 +224,7 @@ export async function getEpisodeSources(
     `/anime/source?id=${encodeURIComponent(animeId)}&season=${season}&episode=${episode}`,
     { revalidate: 0 }
   );
-  return SourceResponseSchema.parse(raw);
+  return proxySourceResponseAssets(SourceResponseSchema.parse(raw));
 }
 
 // ---- Benzer animeler ----
@@ -159,7 +244,7 @@ export async function getSimilarAnimes(id: string): Promise<ApiResponse> {
   };
 
   if (!parsed.page && Array.isArray(parsed.data)) {
-    return ApiResponseSchema.parse({
+    return proxyApiResponseAssets(ApiResponseSchema.parse({
       success: parsed.success ?? true,
       page: {
         page: 1,
@@ -169,10 +254,10 @@ export async function getSimilarAnimes(id: string): Promise<ApiResponse> {
         total_pages: 1,
         data: parsed.data,
       },
-    });
+    }));
   }
 
-  return ApiResponseSchema.parse(raw);
+  return proxyApiResponseAssets(ApiResponseSchema.parse(raw));
 }
 
 // ---- TMDB Cast / Oyuncular ----

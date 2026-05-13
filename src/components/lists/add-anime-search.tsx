@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Image from "next/image";
 import { Search, Plus, Check, Loader2, X } from "lucide-react";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import { cn } from "@/lib/utils";
 
 interface AnimeResult {
@@ -123,7 +123,7 @@ export function AddAnimeSearch({ listId, existingAnimeIds, onAdded, onClose }: P
               {/* Poster thumbnail */}
               <div className="h-12 w-9 shrink-0 overflow-hidden rounded-md bg-[var(--muted)]">
                 {anime.poster ? (
-                  <Image
+                  <AniziumImage
                     src={anime.poster}
                     alt={anime.name}
                     width={36}

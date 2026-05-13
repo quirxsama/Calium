@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { motion, useAnimation } from "framer-motion";
+import { AniziumImage } from "./anizium-image";
 import { Play, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -83,7 +83,7 @@ export function AnimePosterFlip({ poster, youtubeUrl, alt, className }: Props) {
         {!showVideo ? (
           <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg">
             {poster ? (
-              <Image
+              <AniziumImage
                 src={poster}
                 alt={alt}
                 fill

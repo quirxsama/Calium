@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import { PlayCircle } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
 import { formatDuration } from "@/lib/utils";
@@ -75,7 +75,7 @@ export function EngagementPanels() {
             <div className="mt-4 max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-black/30">
               {imageSrc ? (
                 <div className="relative aspect-video w-full">
-                  <Image
+                  <AniziumImage
                     src={imageSrc}
                     alt={continueItem.animeName}
                     fill

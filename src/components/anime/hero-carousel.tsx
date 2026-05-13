@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
+import { AniziumImage } from "./anizium-image";
 import { Play, Info, ChevronLeft, ChevronRight, Star, Pause, Calendar } from "lucide-react";
 import type { AnimeData } from "@/lib/anizium/schemas";
 import { truncate, formatAnimeType } from "@/lib/utils";
@@ -80,7 +80,7 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
             aria-hidden={!active}
           >
             {bg && (
-              <Image
+              <AniziumImage
                 src={bg}
                 alt={a.name}
                 fill
@@ -109,7 +109,7 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
 
           {item.logo ? (
             <div className="relative h-24 md:h-32 lg:h-40 w-full max-w-md md:max-w-lg drop-shadow-[0_8px_24px_rgba(0,0,0,0.65)]">
-              <Image
+              <AniziumImage
                 src={item.logo}
                 alt={item.name}
                 fill
@@ -228,7 +228,7 @@ export function HeroCarousel({ items }: { items: HeroItem[] }) {
                       }`}
                     >
                       {thumb && (
-                        <Image
+                        <AniziumImage
                           src={thumb}
                           alt={a.name}
                           fill

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import Image from "next/image";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { AniziumImage } from "@/components/anime/anizium-image";
 import { useHistory } from "@/hooks/use-history";
 import { clearHistory, removeHistoryItem } from "@/lib/storage/history";
 import { formatDuration } from "@/lib/utils";
@@ -95,7 +95,7 @@ export default function GecmisPage() {
                   className="relative h-20 w-32 shrink-0 rounded-lg overflow-hidden bg-[var(--muted)]"
                 >
                   {h.poster && (
-                    <Image src={h.poster} alt={h.animeName} fill sizes="128px" className="object-cover" />
+                    <AniziumImage src={h.poster} alt={h.animeName} fill sizes="128px" className="object-cover" />
                   )}
                   <div className="absolute inset-0 bg-black/30 opacity-0 hover:opacity-100 flex items-center justify-center transition">
                     <Play className="h-6 w-6 fill-white text-white" />
