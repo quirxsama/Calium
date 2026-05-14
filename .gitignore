@@ -43,6 +43,7 @@ next-env.d.ts
 .vscode
 .windsurf
 *.md
+!README.md
 
 # sqlite database
 prisma/data/
