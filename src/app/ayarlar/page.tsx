@@ -3,14 +3,13 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
-import { User, KeyRound, Palette, Subtitles, Play, Database, Loader2 } from "lucide-react";
+import { User, KeyRound, Palette, Subtitles, Play, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProfileTab } from "@/components/settings/profile-tab";
 import { AccountTab } from "@/components/settings/account-tab";
 import { AppearanceTab } from "@/components/settings/appearance-tab";
 import { CaptionTab } from "@/components/settings/caption-tab";
 import { PlayerTab } from "@/components/settings/player-tab";
-import { DataTab } from "@/components/settings/data-tab";
 
 const TABS = [
   { key: "profil", label: "Profil", icon: User },
@@ -18,7 +17,6 @@ const TABS = [
   { key: "gorunum", label: "Görünüm", icon: Palette },
   { key: "altyazi", label: "Altyazı", icon: Subtitles },
   { key: "oynatici", label: "Oynatıcı", icon: Play },
-  { key: "veri", label: "Veri", icon: Database },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -30,7 +28,7 @@ export default function SettingsPage() {
     if (typeof window === "undefined") return "profil";
 
     const target = new URLSearchParams(window.location.search).get("tab");
-    return target === "hesap" || target === "profil" || target === "gorunum" || target === "altyazi" || target === "oynatici" || target === "veri" ? target : "profil";
+    return target === "hesap" || target === "profil" || target === "gorunum" || target === "altyazi" || target === "oynatici" ? target : "profil";
   });
 
   useEffect(() => {
@@ -82,7 +80,6 @@ export default function SettingsPage() {
           {tab === "gorunum" && <AppearanceTab />}
           {tab === "altyazi" && <CaptionTab />}
           {tab === "oynatici" && <PlayerTab />}
-          {tab === "veri" && <DataTab />}
         </div>
       </div>
     </div>
