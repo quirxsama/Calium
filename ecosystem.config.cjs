@@ -4,8 +4,8 @@ module.exports = {
     {
       name: "calium",
       script: "server.mjs",
-      cwd: "/opt/calium",
-      interpreter: "/home/quirxkaan/.nvm/versions/node/v20.20.2/bin/node",
+      cwd: "/root/Calium",
+      interpreter: "/usr/bin/node",
       env_file: "/opt/calium/.env.local",
       env: {
         NODE_ENV: "production",
