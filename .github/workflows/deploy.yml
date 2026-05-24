@@ -16,27 +16,22 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
-            # Load NVM and use Node 20
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm use 20
-
             cd /opt/calium
 
             # Pull latest code
             git pull origin master
 
             # Install dependencies (postinstall runs prisma generate)
-            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npm ci
+            /usr/bin/npm ci
 
             # Apply any pending database migrations
-            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npx prisma migrate deploy
+            /usr/bin/npx prisma migrate deploy
 
             # Push database changes
-            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npx prisma db push
+            /usr/bin/npx prisma db push
 
             # Build
-            /home/quirxkaan/.nvm/versions/node/v20.20.2/bin/npm run build
+            /usr/bin/npm run build
 
             # Restart app via PM2
             pm2 restart calium --update-env
