@@ -4,11 +4,7 @@ export const WORKER_URL =
 export const PROXY_KEY =
   process.env.ANIZIUM_PROXY_KEY || "";
 
-export const DOMAIN_LIST_URL =
-  "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt";
-
-export const FALLBACK_DOMAIN =
-  process.env.ANIZIUM_FALLBACK_DOMAIN || "https://api.anizium.co";
+export const ANIZIUM_API_BASE_URL = "https://api.anizium.co";
 
 // NOT: CF_CONTROL ve USER_SESSION Anizium upstream'inde kimlik doğrulama
 // için kullanılır. Gizli tutulmalı — default değerleri repo'da bulundurma.
@@ -78,7 +74,6 @@ export const TMDB_API_KEY = process.env.TMDB_API_KEY || "";
 
 // Cache süreleri (saniye)
 export const CACHE_TTL = {
-  domain: 300, // 5dk
   latest: 600, // 10dk
   calendar: 900, // 15dk
   catalog: 1800, // 30dk

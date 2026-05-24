@@ -1,11 +1,9 @@
 import {
+  ANIZIUM_API_BASE_URL,
   CF_CONTROL,
-  DOMAIN_LIST_URL,
-  FALLBACK_DOMAIN,
   ORIGIN,
   USER_AGENT,
   USER_SESSION,
-  CACHE_TTL,
   WORKER_URL,
   PROXY_KEY,
 } from "./constants";
@@ -31,34 +29,6 @@ function buildHeaders() {
   } satisfies Record<string, string>;
 }
 
-let cachedDomains: { list: string[]; at: number } | null = null;
-
-async function fetchDomainList(): Promise<string[]> {
-  const now = Date.now();
-  if (cachedDomains && now - cachedDomains.at < CACHE_TTL.domain * 1000) {
-    return cachedDomains.list;
-  }
-  try {
-    const res = await fetch(DOMAIN_LIST_URL, {
-      next: { revalidate: CACHE_TTL.domain },
-    });
-    if (!res.ok) throw new Error("domain list fetch failed");
-    const text = await res.text();
-    const list = text
-      .split("|")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => (s.startsWith("http") ? s : `https://${s}`))
-      .map((s) => s.replace(/\/$/, ""));
-    const unique = Array.from(new Set([...list, FALLBACK_DOMAIN]));
-    cachedDomains = { list: unique, at: now };
-    return unique;
-  } catch {
-    cachedDomains = { list: [FALLBACK_DOMAIN], at: now };
-    return [FALLBACK_DOMAIN];
-  }
-}
-
 export type AniziumFetchOpts = {
   revalidate?: number;
   signal?: AbortSignal;
@@ -82,56 +52,47 @@ export async function aniziumFetch<T = unknown>(
     return aniziumFetchViaWorker<T>(path, opts);
   }
 
-  const domains = await fetchDomainList();
   const headers = buildHeaders();
-  let lastErr: unknown = null;
-  for (const domain of domains) {
-    const url = `${domain}${path.startsWith("/") ? path : "/" + path}`;
-    try {
-      const controller = new AbortController();
-      const signals = [opts.signal, controller.signal].filter(Boolean) as AbortSignal[];
-      const combinedSignal = signals.length > 1
-        ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ?? controller.signal
-        : (signals[0] ?? controller.signal);
-      const to = setTimeout(() => controller.abort(), 12_000);
-      let res: Response;
-      try {
-        res = await fetch(url, {
-          headers,
-          signal: combinedSignal,
-          next:
-            typeof opts.revalidate === "number"
-              ? { revalidate: opts.revalidate }
-              : undefined,
-          cache: opts.revalidate === 0 ? "no-store" : undefined,
-        });
-      } finally {
-        clearTimeout(to);
-      }
-      if (!res.ok) {
-        lastErr = new Error(`HTTP ${res.status} @ ${url}`);
-        console.warn("[anizium] upstream non-ok response", {
-          path,
-          domain,
-          status: res.status,
-          retriable: res.status >= 500 || res.status === 403,
-        });
-        if (res.status >= 500 || res.status === 403) continue;
-        throw lastErr;
-      }
-      const data = (await res.json()) as T;
-      return data;
-    } catch (e) {
-      lastErr = e;
-      console.warn("[anizium] upstream fetch failed", {
-        path,
-        domain,
-        error: e instanceof Error ? e.message : String(e),
-      });
-      continue;
-    }
+  const url = `${ANIZIUM_API_BASE_URL}${path.startsWith("/") ? path : "/" + path}`;
+  const controller = new AbortController();
+  const signals = [opts.signal, controller.signal].filter(Boolean) as AbortSignal[];
+  const combinedSignal = signals.length > 1
+    ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ?? controller.signal
+    : (signals[0] ?? controller.signal);
+  const to = setTimeout(() => controller.abort(), 12_000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers,
+      signal: combinedSignal,
+      next:
+        typeof opts.revalidate === "number"
+          ? { revalidate: opts.revalidate }
+          : undefined,
+      cache: opts.revalidate === 0 ? "no-store" : undefined,
+    });
+  } catch (e) {
+    console.warn("[anizium] upstream fetch failed", {
+      path,
+      url,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
+  } finally {
+    clearTimeout(to);
   }
-  throw lastErr ?? new Error("All anizium domains failed");
+
+  if (!res.ok) {
+    console.warn("[anizium] upstream non-ok response", {
+      path,
+      url,
+      status: res.status,
+    });
+    throw new Error(`HTTP ${res.status} @ ${url}`);
+  }
+
+  const data = (await res.json()) as T;
+  return data;
 }
 
 async function aniziumFetchViaWorker<T = unknown>(
@@ -255,5 +216,3 @@ async function aniziumAssetFetchViaWorker(
     clearTimeout(to);
   }
 }
-
-export { fetchDomainList };

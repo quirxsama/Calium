@@ -165,7 +165,6 @@ Doğrudan upstream isteklerinde bu iki değer gereklidir:
 ANIZIUM_CF_CONTROL=""
 ANIZIUM_USER_SESSION=""
 ANIZIUM_USER_AGENT=""
-ANIZIUM_FALLBACK_DOMAIN="https://api.anizium.co"
 TMDB_API_KEY=""
 ```
 
@@ -260,12 +259,12 @@ Standart `next dev` veya `next start` ile API route'ları çalışır, ancak ser
 
 Anizium istekleri merkezi client üzerinden yürür. Bu katman:
 
-- Domain listesini alır ve fallback domain kullanır.
+- Tek sabit Anizium API endpoint'ini kullanır.
 - Cache TTL değerlerini uygular.
 - Direct mode için gerekli upstream header'larını ekler.
 - Worker/proxy mode için `ANIZIUM_WORKER_URL` değerini kullanır.
 - Asset proxy ve subtitle/image isteklerini yönetir.
-- Timeout ve retry davranışı sağlar.
+- Timeout davranışı sağlar.
 
 Yeni Anizium entegrasyonları eklenirken doğrudan `fetch` yerine proje içindeki Anizium client yardımcıları kullanılmalıdır.
 
@@ -508,7 +507,6 @@ Direct upstream requests require these two values:
 ANIZIUM_CF_CONTROL=""
 ANIZIUM_USER_SESSION=""
 ANIZIUM_USER_AGENT=""
-ANIZIUM_FALLBACK_DOMAIN="https://api.anizium.co"
 TMDB_API_KEY=""
 ```
 

@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { User, Calendar, List, Heart, Lock, Loader2, Users, Settings2, Activity, Radio } from "lucide-react";
+import { User, Calendar, List, Heart, Lock, Loader2, Users, Settings2, Activity, Radio, Clock, Play } from "lucide-react";
 import { FollowButton, type FollowStatus } from "@/components/social/follow-button";
 import { usePresenceSubscribe } from "@/lib/realtime/presence";
 import { PresenceDot, activityText } from "@/components/social/presence-dot";
+import { AniziumImage } from "@/components/anime/anizium-image";
+import { formatDuration } from "@/lib/utils";
 
 interface ProfileData {
   id: string;
@@ -17,6 +19,7 @@ interface ProfileData {
   bio?: string | null;
   profilePublic: boolean;
   listsPublic?: boolean;
+  historyPublic?: boolean;
   isPrivate?: boolean;
   createdAt?: string;
   _count?: {
@@ -26,6 +29,19 @@ interface ProfileData {
     following: number;
     friends: number;
   };
+}
+
+interface RecentHistoryData {
+  animeId: string;
+  animeName: string;
+  poster: string | null;
+  episodeId: string;
+  episodeName: string;
+  episodeNumber: number | null;
+  seasonNumber: number | null;
+  progress: number;
+  duration: number;
+  updatedAt: number;
 }
 
 interface ListData {
@@ -40,6 +56,7 @@ export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [lists, setLists] = useState<ListData[]>([]);
+  const [recentHistory, setRecentHistory] = useState<RecentHistoryData[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [followStatus, setFollowStatus] = useState<FollowStatus>("not_following");
   const [restricted, setRestricted] = useState(false);
@@ -60,6 +77,7 @@ export default function ProfilePage() {
       } else {
         setProfile(data.user);
         setLists(data.lists ?? []);
+        setRecentHistory(data.recentHistory ?? []);
         setIsOwner(data.isOwner ?? false);
         setFollowStatus(data.followStatus ?? "not_following");
         setRestricted(data.restricted ?? false);
@@ -85,6 +103,7 @@ export default function ProfilePage() {
             if (d.success) {
               setProfile(d.user);
               setLists(d.lists ?? []);
+              setRecentHistory(d.recentHistory ?? []);
               setRestricted(d.restricted ?? false);
             }
           });
@@ -249,6 +268,73 @@ export default function ProfilePage() {
         </div>
       ) : (
         <>
+          {recentHistory.length > 0 && (
+            <section className="mb-8">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--foreground)]">
+                    <Clock className="h-4 w-4 text-[var(--primary)]" />
+                    Son izlenenler
+                  </h2>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    {isOwner && profile.historyPublic === false
+                      ? "Bu alan şu anda sadece size görünür; görünürlük ayarını açarsanız diğerleri son 5 izleme kaydınızı görebilir."
+                      : "Profilde yalnızca en son izlenen 5 kayıt gösterilir."}
+                  </p>
+                </div>
+                {isOwner && profile.historyPublic === false && (
+                  <span className="inline-flex w-fit items-center gap-1 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+                    <Lock className="h-3.5 w-3.5" />
+                    Başkalarına kapalı
+                  </span>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {recentHistory.map((item) => {
+                  const pct = item.duration > 0 ? Math.min(100, Math.round((item.progress / item.duration) * 100)) : 0;
+                  return (
+                    <Link
+                      key={`${item.animeId}-${item.episodeId}`}
+                      href={`/izle/${encodeURIComponent(item.animeId)}/${encodeURIComponent(item.episodeId)}`}
+                      className="group flex gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 transition hover:border-[var(--primary)]/30 hover:shadow-lg"
+                    >
+                      <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-[var(--muted)]">
+                        {item.poster ? (
+                          <AniziumImage src={item.poster} alt={item.animeName} fill sizes="64px" className="object-cover transition group-hover:scale-105" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xs text-[var(--muted-foreground)]">?</div>
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition group-hover:opacity-100">
+                          <Play className="h-5 w-5 fill-white text-white" />
+                        </div>
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
+                          <div className="h-full bg-[var(--primary)]" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="line-clamp-1 text-sm font-semibold text-[var(--foreground)] group-hover:text-[var(--primary)]">
+                          {item.animeName}
+                        </h3>
+                        <p className="mt-1 line-clamp-2 text-xs text-[var(--muted-foreground)]">
+                          {item.seasonNumber ? `S${item.seasonNumber} · ` : ""}
+                          {item.episodeNumber ? `B${item.episodeNumber} · ` : ""}
+                          {item.episodeName}
+                        </p>
+                        <p className="mt-2 text-xs font-medium text-[var(--foreground)]">
+                          {formatDuration(item.progress)} / {formatDuration(item.duration)} · %{pct}
+                        </p>
+                        <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+                          {new Date(item.updatedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "long" })}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {/* Lists */}
           {lists.length > 0 && (
             <div>

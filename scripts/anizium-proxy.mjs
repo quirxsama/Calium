@@ -16,11 +16,7 @@ const USER_AGENT =
   process.env.ANIZIUM_USER_AGENT ||
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
-const FALLBACK_DOMAIN =
-  process.env.ANIZIUM_FALLBACK_DOMAIN || "https://api.anizium.co";
-
-const DOMAIN_LIST_URL =
-  "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt";
+const ANIZIUM_API_BASE_URL = "https://api.anizium.co";
 
 const ORIGIN = "https://x.anizium.co";
 
@@ -35,33 +31,6 @@ const ALLOWED_ASSET_HOSTS = new Set([
 
 const ASSET_CACHE_CONTROL =
   process.env.ANIZIUM_ASSET_CACHE_CONTROL || "public, max-age=86400, stale-while-revalidate=604800";
-
-let cachedDomains = null;
-let cachedAt = 0;
-const DOMAIN_TTL = 300_000;
-
-async function fetchDomainList() {
-  const now = Date.now();
-  if (cachedDomains && now - cachedAt < DOMAIN_TTL) return cachedDomains;
-  try {
-    const res = await fetch(DOMAIN_LIST_URL);
-    if (!res.ok) throw new Error("domain list failed");
-    const text = await res.text();
-    const list = text
-      .split("|")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => (s.startsWith("http") ? s : `https://${s}`))
-      .map((s) => s.replace(/\/$/, ""));
-    cachedDomains = Array.from(new Set([...list, FALLBACK_DOMAIN]));
-    cachedAt = now;
-    return cachedDomains;
-  } catch {
-    cachedDomains = [FALLBACK_DOMAIN];
-    cachedAt = Date.now();
-    return cachedDomains;
-  }
-}
 
 function buildHeaders() {
   return {
@@ -209,46 +178,37 @@ const server = http.createServer(async (req, res) => {
 
   res.setHeader("Content-Type", "application/json");
 
-  const domains = await fetchDomainList();
   const headers = buildHeaders();
 
-  let lastErr = null;
-  for (const domain of domains) {
-    const url = `${domain}${path.startsWith("/") ? path : "/" + path}`;
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 12_000);
-      const upstream = await fetch(url, {
-        headers,
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+  const url = `${ANIZIUM_API_BASE_URL}${path.startsWith("/") ? path : "/" + path}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const upstream = await fetch(url, {
+      headers,
+      signal: controller.signal,
+    });
 
-      if (!upstream.ok) {
-        lastErr = new Error(`HTTP ${upstream.status} @ ${url}`);
-        if (upstream.status >= 500 || upstream.status === 403) continue;
-        res.writeHead(upstream.status);
-        res.end(JSON.stringify({ success: false, error: lastErr.message }));
-        return;
-      }
-
-      const data = await upstream.json();
-      res.writeHead(200);
-      res.end(JSON.stringify(data));
+    if (!upstream.ok) {
+      res.writeHead(upstream.status);
+      res.end(JSON.stringify({ success: false, error: `HTTP ${upstream.status} @ ${url}` }));
       return;
-    } catch (e) {
-      lastErr = e;
-      continue;
     }
-  }
 
-  res.writeHead(502);
-  res.end(
-    JSON.stringify({
-      success: false,
-      error: lastErr?.message || "All domains failed",
-    })
-  );
+    const data = await upstream.json();
+    res.writeHead(200);
+    res.end(JSON.stringify(data));
+  } catch (e) {
+    res.writeHead(502);
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: e?.message || "Anizium request failed",
+      })
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 server.listen(PORT, "0.0.0.0", () => {

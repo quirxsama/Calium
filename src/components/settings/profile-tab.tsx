@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth/context";
 import { AniziumImage } from "@/components/anime/anizium-image";
-import { Loader2, Save, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { Loader2, Save, Eye, EyeOff, Upload, ChevronLeft, ChevronRight, Search, X, Clock } from "lucide-react";
 
 export function ProfileTab() {
   const { user, updateUser } = useAuth();
@@ -14,6 +14,7 @@ export function ProfileTab() {
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? "");
   const [profilePublic, setProfilePublic] = useState(user?.profilePublic ?? true);
   const [listsPublic, setListsPublic] = useState(user?.listsPublic ?? true);
+  const [historyPublic, setHistoryPublic] = useState(user?.historyPublic ?? true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [avatarPresets, setAvatarPresets] = useState<{ ID: string; name: string; link: string | null }[]>([]);
@@ -161,7 +162,7 @@ export function ProfileTab() {
     const res = await fetch("/api/account", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName, bio, avatarUrl, profilePublic, listsPublic }),
+      body: JSON.stringify({ displayName, bio, avatarUrl, profilePublic, listsPublic, historyPublic }),
     });
     const data = await res.json();
     setLoading(false);
@@ -409,6 +410,14 @@ export function ProfileTab() {
             label="Listeler herkese açık"
             description="Kapatırsanız listeleriniz sadece size görünür."
             iconOn={<Eye className="h-4 w-4" />}
+            iconOff={<EyeOff className="h-4 w-4" />}
+          />
+          <Toggle
+            checked={historyPublic}
+            onChange={setHistoryPublic}
+            label="Son izlenenler herkese açık"
+            description="Kapatırsanız profilinizdeki son 5 izleme kaydı sadece size görünür."
+            iconOn={<Clock className="h-4 w-4" />}
             iconOff={<EyeOff className="h-4 w-4" />}
           />
         </div>

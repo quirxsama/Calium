@@ -12,6 +12,7 @@ export interface AuthUser {
   role: string;
   profilePublic: boolean;
   listsPublic: boolean;
+  historyPublic?: boolean;
   isPrivate?: boolean;
   dndEnabled?: boolean;
   allowOfflineInvites?: boolean;

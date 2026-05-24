@@ -16,6 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
       bio: true,
       profilePublic: true,
       listsPublic: true,
+      historyPublic: true,
       isPrivate: true,
       createdAt: true,
       _count: {
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     bio: user.bio,
     profilePublic: user.profilePublic,
     listsPublic: user.listsPublic,
+    historyPublic: user.historyPublic,
     isPrivate: user.isPrivate,
     createdAt: user.createdAt,
     _count: {
@@ -81,6 +83,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
       isOwner,
       followStatus,
       lists: [],
+      recentHistory: [],
+      historyVisible: false,
       restricted: true,
     });
   }
@@ -97,12 +101,49 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     });
   }
 
+  let recentHistory: unknown[] = [];
+  const historyVisible = isOwner || user.historyPublic;
+  if (historyVisible) {
+    const history = await prisma.historyItem.findMany({
+      where: { userId: user.id },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: {
+        animeId: true,
+        animeName: true,
+        poster: true,
+        episodeId: true,
+        episodeName: true,
+        episodeNumber: true,
+        seasonNumber: true,
+        progress: true,
+        duration: true,
+        updatedAt: true,
+      },
+    });
+
+    recentHistory = history.map((h) => ({
+      animeId: h.animeId,
+      animeName: h.animeName,
+      poster: h.poster,
+      episodeId: h.episodeId,
+      episodeName: h.episodeName,
+      episodeNumber: h.episodeNumber,
+      seasonNumber: h.seasonNumber,
+      progress: h.progress,
+      duration: h.duration,
+      updatedAt: h.updatedAt.getTime(),
+    }));
+  }
+
   return NextResponse.json({
     success: true,
     user: baseUser,
     isOwner,
     followStatus,
     lists,
+    recentHistory,
+    historyVisible,
     restricted: false,
   });
 }

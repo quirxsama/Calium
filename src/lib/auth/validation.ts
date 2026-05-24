@@ -21,6 +21,7 @@ export const updateProfileSchema = z.object({
   avatarUrl: z.string().url().optional().nullable().or(z.literal("")),
   profilePublic: z.boolean().optional(),
   listsPublic: z.boolean().optional(),
+  historyPublic: z.boolean().optional(),
   isPrivate: z.boolean().optional(),
   dndEnabled: z.boolean().optional(),
   allowOfflineInvites: z.boolean().optional(),

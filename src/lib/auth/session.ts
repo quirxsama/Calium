@@ -26,6 +26,7 @@ export async function getCurrentUser() {
       role: true,
       profilePublic: true,
       listsPublic: true,
+      historyPublic: true,
       isPrivate: true,
       dndEnabled: true,
       allowOfflineInvites: true,

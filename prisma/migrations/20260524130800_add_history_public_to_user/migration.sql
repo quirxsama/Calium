@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "historyPublic" BOOLEAN NOT NULL DEFAULT true;
