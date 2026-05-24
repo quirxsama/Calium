@@ -6,7 +6,7 @@ module.exports = {
       script: "server.mjs",
       cwd: "/root/Calium",
       interpreter: "/usr/bin/node",
-      env_file: "/opt/calium/.env.local",
+      env_file: "/root/Calium/.env.local",
       env: {
         NODE_ENV: "production",
         PORT: 3001,
@@ -20,7 +20,7 @@ module.exports = {
       host: "localhost",
       ref: "origin/main",
       repo: "git@github.com:quirxsama/Calium.git",
-      path: "/opt/calium",
+      path: "/root/Calium",
       "post-deploy": "npm install && npm run build && pm2 reload ecosystem.config.cjs --env production",
     },
   },
