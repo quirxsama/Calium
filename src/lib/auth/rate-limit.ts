@@ -49,6 +49,9 @@ export function rateLimit(
 export function getClientIp(req: NextRequest): string {
   const trustProxy = process.env.TRUST_PROXY === "1";
   if (trustProxy) {
+    const cfIp = req.headers.get("cf-connecting-ip");
+    if (cfIp) return cfIp.trim();
+
     const xff = req.headers.get("x-forwarded-for");
     if (xff) {
       const first = xff.split(",")[0]?.trim();

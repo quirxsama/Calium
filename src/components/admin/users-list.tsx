@@ -13,6 +13,7 @@ type UserRow = {
   avatarUrl: string | null;
   createdAt: string;
   profilePublic: boolean;
+  loginIps: { id: string; ip: string; createdAt: string }[];
 };
 
 type Data = {
@@ -99,6 +100,7 @@ export function AdminUsersClient() {
               <th className="px-4 py-2.5 text-left font-medium text-[var(--muted-foreground)]">Kullanıcı Adı</th>
               <th className="px-4 py-2.5 text-left font-medium text-[var(--muted-foreground)]">E-posta</th>
               <th className="px-4 py-2.5 text-left font-medium text-[var(--muted-foreground)]">Rol</th>
+              <th className="px-4 py-2.5 text-left font-medium text-[var(--muted-foreground)]">IP Geçmişi</th>
               <th className="px-4 py-2.5 text-left font-medium text-[var(--muted-foreground)]">Kayıt</th>
               <th className="px-4 py-2.5 text-right font-medium text-[var(--muted-foreground)]">İşlem</th>
             </tr>
@@ -107,12 +109,12 @@ export function AdminUsersClient() {
             {loading && !data ? (
               [...Array(5)].map((_, i) => (
                 <tr key={i} className="border-b border-[var(--border)]">
-                  <td colSpan={5} className="px-4 py-3"><div className="skeleton h-4 w-full rounded" /></td>
+                  <td colSpan={6} className="px-4 py-3"><div className="skeleton h-4 w-full rounded" /></td>
                 </tr>
               ))
             ) : data?.users.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-[var(--muted-foreground)]">
+                <td colSpan={6} className="px-4 py-8 text-center text-[var(--muted-foreground)]">
                   Kullanıcı bulunamadı.
                 </td>
               </tr>
@@ -132,6 +134,25 @@ export function AdminUsersClient() {
                     >
                       {u.role}
                     </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-[var(--muted-foreground)]">
+                    {u.loginIps.length > 0 ? (
+                      <details className="group">
+                        <summary className="cursor-pointer list-none text-xs text-[var(--primary)]">
+                          {u.loginIps[0]?.ip} ({u.loginIps.length})
+                        </summary>
+                        <div className="mt-2 space-y-1 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2">
+                          {u.loginIps.map((entry) => (
+                            <div key={entry.id} className="flex items-center justify-between gap-4 text-xs">
+                              <span className="font-mono text-[var(--foreground)]">{entry.ip}</span>
+                              <span>{new Date(entry.createdAt).toLocaleString("tr-TR")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : (
+                      <span className="text-xs">Yok</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-[var(--muted-foreground)]">
                     {new Date(u.createdAt).toLocaleDateString("tr-TR")}

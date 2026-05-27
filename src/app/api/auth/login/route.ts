@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Email veya şifre hatalı." }, { status: 401 });
   }
 
+  await prisma.loginIp.create({ data: { userId: user.id, ip } });
+
   const token = await signToken(user.id, user.role);
   const cookie = setSessionCookie(token);
 

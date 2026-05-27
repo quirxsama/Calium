@@ -36,6 +36,10 @@ export async function GET(req: NextRequest) {
         avatarUrl: true,
         createdAt: true,
         profilePublic: true,
+        loginIps: {
+          orderBy: { createdAt: "desc" },
+          select: { id: true, ip: true, createdAt: true },
+        },
       },
     }),
     prisma.user.count({ where }),
