@@ -1,11 +1,26 @@
 import { z } from "zod";
 
+const posterSchema = z
+  .string()
+  .max(500)
+  .refine((value) => {
+    if (value.startsWith("/api/anizium/asset?")) return true;
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Invalid URL")
+  .nullable()
+  .optional();
+
 export const createRoomSchema = z.object({
   animeId: z.string().min(1).max(64),
   animeName: z.string().min(1).max(200),
   episodeId: z.string().min(1).max(64),
   episodeName: z.string().max(200).nullable().optional(),
-  poster: z.string().url().max(500).nullable().optional(),
+  poster: posterSchema,
   isPublic: z.boolean().optional(),
 });
 
@@ -41,7 +56,7 @@ export const roomRequestSchema = z.object({
   animeName: z.string().min(1).max(200).optional(),
   episodeId: z.string().min(1).max(64).optional(),
   episodeName: z.string().max(200).nullable().optional(),
-  poster: z.string().url().max(500).nullable().optional(),
+  poster: posterSchema,
 });
 
 export const kickSchema = z.object({
@@ -66,7 +81,7 @@ export const offlineInviteSchema = z.object({
   animeName: z.string().min(1).max(200),
   episodeId: z.string().min(1).max(64),
   episodeName: z.string().max(200).nullable().optional(),
-  poster: z.string().url().max(500).nullable().optional(),
+  poster: posterSchema,
 });
 
 export const offlineInviteRespondSchema = z.object({
