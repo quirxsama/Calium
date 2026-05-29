@@ -2,15 +2,12 @@ import http from "http";
 import { Readable } from "stream";
 
 const PORT = process.env.PORT || 3002;
-const API_KEY = process.env.PROXY_API_KEY || "";
+const HOST = process.env.HOST || "127.0.0.1";
+const API_KEY = process.env.PROXY_API_KEY || process.env.ANIZIUM_PROXY_KEY || "";
 
-const CF_CONTROL =
-  process.env.ANIZIUM_CF_CONTROL ||
-  "134e4c040840015655080906544d030f004b4c075b54500f";
+const CF_CONTROL = process.env.ANIZIUM_CF_CONTROL || "";
 
-const USER_SESSION =
-  process.env.ANIZIUM_USER_SESSION ||
-  "01570d01545f55510102040f525d390e00094f0556514e2d1d5201580100071e030350115a53534c05550f535143455c085c54101215";
+const USER_SESSION = process.env.ANIZIUM_USER_SESSION || "";
 
 const USER_AGENT =
   process.env.ANIZIUM_USER_AGENT ||
@@ -31,6 +28,14 @@ const ALLOWED_ASSET_HOSTS = new Set([
 
 const ASSET_CACHE_CONTROL =
   process.env.ANIZIUM_ASSET_CACHE_CONTROL || "public, max-age=86400, stale-while-revalidate=604800";
+
+if (!CF_CONTROL || !USER_SESSION) {
+  throw new Error("ANIZIUM_CF_CONTROL ve ANIZIUM_USER_SESSION env değişkenleri zorunlu.");
+}
+
+if (!API_KEY) {
+  throw new Error("PROXY_API_KEY veya ANIZIUM_PROXY_KEY env değişkeni zorunlu.");
+}
 
 function buildHeaders() {
   return {
@@ -141,14 +146,11 @@ async function proxyAsset(targetUrl, req, res) {
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
-  // Basit API key kontrolü
-  if (API_KEY) {
-    const key = req.headers["x-proxy-key"];
-    if (key !== API_KEY) {
-      res.writeHead(401);
-      res.end(JSON.stringify({ success: false, error: "Unauthorized" }));
-      return;
-    }
+  const key = req.headers["x-proxy-key"];
+  if (key !== API_KEY) {
+    res.writeHead(401);
+    res.end(JSON.stringify({ success: false, error: "Unauthorized" }));
+    return;
   }
 
   if (req.method !== "GET") {
@@ -191,7 +193,7 @@ const server = http.createServer(async (req, res) => {
 
     if (!upstream.ok) {
       res.writeHead(upstream.status);
-      res.end(JSON.stringify({ success: false, error: `HTTP ${upstream.status} @ ${url}` }));
+      res.end(JSON.stringify({ success: false, error: `HTTP ${upstream.status}` }));
       return;
     }
 
@@ -211,6 +213,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Anizium proxy running on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Anizium proxy running on http://${HOST}:${PORT}`);
 });

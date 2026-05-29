@@ -7,9 +7,10 @@ import { NextResponse, type NextRequest } from "next/server";
  * set etmek zorundadır; form submit'lerinde de set edilir. SameSite=lax cookie
  * ile birlikte katmanlı koruma sağlar.
  *
- * /api/auth/* hariç (login/register/logout) — bu rotalar halihazırda
+ * /api/auth/login ve /api/auth/register hariç — bu rotalar halihazırda
  * rate-limit + şifre doğrulama ile korunuyor ve bazı durumlarda origin'siz
- * POST (örn. server-side fetch) kabul edilebilir olmalı.
+ * POST (örn. server-side fetch) kabul edilebilir olmalı. Logout gibi diğer
+ * auth mutasyonları same-origin kontrolünden geçer.
  *
  * Not: Anizium proxy rotaları (GET) method filtresi nedeniyle zaten etkilenmez.
  */
@@ -22,8 +23,10 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (!pathname.startsWith("/api/")) return NextResponse.next();
 
-  // Auth endpoint'lerinde rate-limit + password checks var; skip.
-  if (pathname.startsWith("/api/auth/")) return NextResponse.next();
+  // Login/register endpoint'lerinde rate-limit + password checks var; skip.
+  if (pathname === "/api/auth/login" || pathname === "/api/auth/register") {
+    return NextResponse.next();
+  }
 
   const host = req.headers.get("host");
   if (!host) {

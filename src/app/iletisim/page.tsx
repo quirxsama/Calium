@@ -20,7 +20,7 @@ export default function ContactPage() {
             adresi üzerinden bizimle iletişime geçebilirsiniz.
           </p>
           <p className="mt-2 font-medium text-[var(--foreground)]">
-            caliumapp@protonmail.com
+            info@calium.fun
           </p>
         </Section>
 
@@ -35,7 +35,7 @@ export default function ContactPage() {
             gönderebilirsiniz:
           </p>
           <p className="mt-2 font-medium text-[var(--foreground)]">
-            caliumapp@protonmail.com
+            dmca@calium.fun
           </p>
           <p className="mt-2 text-sm">
             Lütfen bildirminizde şu bilgileri yer verin: ihlal edilen içeriğin
