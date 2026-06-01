@@ -232,7 +232,7 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6 overscroll-contain">
+    <div className="watch-page-shell mx-auto max-w-7xl px-4 sm:px-6 py-6 overscroll-contain">
       <div className="mb-4 flex items-center justify-between">
         <Link
           href={`/anime/${encodeURIComponent(details.ID)}`}
@@ -272,37 +272,39 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
         <div>
-          {state.status === "loading" && (
-            <div className="aspect-video w-full rounded-xl bg-[var(--muted)] skeleton" />
-          )}
-          {state.status === "error" && (
-            <div className="aspect-video w-full rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-center text-center p-6">
-              <div>
-                <p className="text-[var(--foreground)] font-semibold">
-                  Video kaynağı yüklenemedi
-                </p>
-                <p className="mt-1 text-sm text-[var(--muted-foreground)] max-w-md">
-                  {state.message}
-                </p>
+          <div className="watch-player-frame">
+            {state.status === "loading" && (
+              <div className="aspect-video w-full rounded-xl bg-[var(--muted)] skeleton" />
+            )}
+            {state.status === "error" && (
+              <div className="aspect-video w-full rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-center text-center p-6">
+                <div>
+                  <p className="text-[var(--foreground)] font-semibold">
+                    Video kaynağı yüklenemedi
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--muted-foreground)] max-w-md">
+                    {state.message}
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
-          {state.status === "ready" && (
-            <AnimePlayer
-              key={episodeId}
-              groups={state.groups}
-              subtitles={state.subtitles}
-              poster={currentEp?.banner_link ?? details.details_banner ?? null}
-              title={`${details.name} — ${currentEp?.name ?? ""}`}
-              startAt={startAt}
-              onTimeUpdate={onTU}
-              onEnded={onEnded}
-              introStart={parseTimeCode(state.content?.opening?.start)}
-              introEnd={parseTimeCode(state.content?.opening?.end)}
-              outroStart={parseTimeCode(state.content?.next_episode)}
-              nextEpisodeHref={nextEp ? `/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}` : null}
-            />
-          )}
+            )}
+            {state.status === "ready" && (
+              <AnimePlayer
+                key={episodeId}
+                groups={state.groups}
+                subtitles={state.subtitles}
+                poster={currentEp?.banner_link ?? details.details_banner ?? null}
+                title={`${details.name} — ${currentEp?.name ?? ""}`}
+                startAt={startAt}
+                onTimeUpdate={onTU}
+                onEnded={onEnded}
+                introStart={parseTimeCode(state.content?.opening?.start)}
+                introEnd={parseTimeCode(state.content?.opening?.end)}
+                outroStart={parseTimeCode(state.content?.next_episode)}
+                nextEpisodeHref={nextEp ? `/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}` : null}
+              />
+            )}
+          </div>
 
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-2">

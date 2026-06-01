@@ -124,6 +124,19 @@ body {
   }
 }
 
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) and (max-height: 560px) {
+  .watch-page-shell {
+    padding-inline: clamp(1.5rem, 6vw, 3.25rem);
+  }
+
+  .watch-player-frame {
+    width: min(calc(100vw - 4rem), calc((100vh - 4.75rem) * 1.7778));
+    width: min(calc(100vw - 4rem), calc((100svh - 4.75rem) * 1.7778));
+    max-width: 100%;
+    margin-inline: auto;
+  }
+}
+
 /* Shimmer / skeleton */
 .skeleton {
   background: linear-gradient(90deg, var(--muted) 0%, color-mix(in oklab, var(--muted) 60%, var(--background)) 50%, var(--muted) 100%);

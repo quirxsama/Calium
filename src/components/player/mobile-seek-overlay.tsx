@@ -14,6 +14,8 @@ type RippleState = {
   key: number;
 };
 
+type TapZone = "left" | "center" | "right";
+
 type Props = {
   playerRef: React.RefObject<MediaPlayerInstance | null>;
   controlsVisible: boolean;
@@ -22,7 +24,7 @@ type Props = {
 };
 
 export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isInteractiveTarget }: Props) {
-  const lastTapRef = useRef<{ time: number; side: "left" | "right" } | null>(null);
+  const lastTapRef = useRef<{ time: number; zone: TapZone } | null>(null);
   const accumulatedRef = useRef(0);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,6 +94,24 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
         setRipple(null);
         accumulatedRef.current = 0;
       }, 700);
+    },
+    [playerRef]
+  );
+
+  const enterFullscreenFromCenterTap = useCallback(
+    (trigger: Event) => {
+      const p = playerRef.current;
+      if (!p || p.state.fullscreen) return false;
+
+      const isCompactMobile = window.matchMedia("(max-width: 767px), (max-height: 480px)").matches;
+      if (!isCompactMobile) return false;
+
+      void p.enterFullscreen("prefer-media", trigger).catch(() => {
+        const el = p.el as HTMLElement | null | undefined;
+        void el?.requestFullscreen?.().catch(() => {});
+      });
+
+      return true;
     },
     [playerRef]
   );
@@ -172,12 +192,12 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
       if (!touch) return;
       const rect = el.getBoundingClientRect();
       const x = touch.clientX - rect.left;
-      const side: "left" | "right" = x < rect.width / 2 ? "left" : "right";
+      const zone: TapZone = x < rect.width / 3 ? "left" : x > (rect.width * 2) / 3 ? "right" : "center";
 
       const now = Date.now();
       const last = lastTapRef.current;
 
-      if (last && last.side === side && now - last.time < DOUBLE_TAP_MS) {
+      if (last && last.zone === zone && now - last.time < DOUBLE_TAP_MS) {
         if (singleTapTimerRef.current) {
           clearTimeout(singleTapTimerRef.current);
           singleTapTimerRef.current = null;
@@ -188,13 +208,18 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
         suppressNativeTapUntilRef.current = Date.now() + DOUBLE_TAP_MS;
         e.preventDefault();
         e.stopPropagation();
-        handleSeek(side);
+
+        if (zone === "center") {
+          enterFullscreenFromCenterTap(e);
+        } else {
+          handleSeek(zone);
+        }
 
         window.setTimeout(() => {
           suppressNativeDoubleTapRef.current = false;
         }, DOUBLE_TAP_MS);
       } else {
-        lastTapRef.current = { time: now, side };
+        lastTapRef.current = { time: now, zone };
 
         if (singleTapTimerRef.current) {
           clearTimeout(singleTapTimerRef.current);
@@ -270,7 +295,7 @@ export function MobileSeekOverlay({ playerRef, controlsVisible, onSingleTap, isI
       el.removeEventListener("pointerup", onPointerLike, true);
       el.removeEventListener("dblclick", onDoubleClick, true);
     };
-  }, [clearLongPressTimer, controlsVisible, handleSeek, isInteractiveTarget, onSingleTap, playerRef, startSpeedBoost, stopSpeedBoost]);
+  }, [clearLongPressTimer, controlsVisible, enterFullscreenFromCenterTap, handleSeek, isInteractiveTarget, onSingleTap, playerRef, startSpeedBoost, stopSpeedBoost]);
 
   return (
     <div className="absolute inset-0 z-20 flex pointer-events-none">
