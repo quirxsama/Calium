@@ -16,6 +16,7 @@ import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, DoorOpen, Link2, Loa
 import { cn, parseTimeCode } from "@/lib/utils";
 import type { SourceGroup, SubtitleData, SourceContent, EpisodeData } from "@/lib/anizium/schemas";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { FillerBadge } from "@/components/anime/filler-badge";
 
 type Member = {
   userId: string;
@@ -81,6 +82,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [friendsError, setFriendsError] = useState<string | null>(null);
   const [seasonEpisodes, setSeasonEpisodes] = useState<EpisodeData[]>([]);
+  const [seasonName, setSeasonName] = useState<string | null>(null);
   const [showEpisodePicker, setShowEpisodePicker] = useState(false);
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
@@ -251,6 +253,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
           for (const ep of s.episodes ?? []) {
             if (ep.ID === room.episodeId) {
               setSeasonEpisodes(s.episodes ?? []);
+              setSeasonName(s.name ?? null);
               seasonNum = Number(s.number) || 1;
               episodeNum = Number(ep.number) || 1;
               matched = true;
@@ -262,6 +265,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
         if (!matched && room.episodeId === "film") {
           const first = det.data.seasons?.[0]?.episodes ?? [];
           setSeasonEpisodes(first);
+          setSeasonName(det.data.name ?? null);
           seasonNum = 1;
           episodeNum = 1;
         }
@@ -832,6 +836,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
   }
 
   const currentEpisodeIndex = useMemo(() => seasonEpisodes.findIndex((e) => e.ID === room.episodeId), [seasonEpisodes, room.episodeId]);
+  const currentEpisode = currentEpisodeIndex >= 0 ? seasonEpisodes[currentEpisodeIndex] : null;
   const prevEpisode = currentEpisodeIndex > 0 ? seasonEpisodes[currentEpisodeIndex - 1] : null;
   const nextEpisode = currentEpisodeIndex >= 0 && currentEpisodeIndex < seasonEpisodes.length - 1 ? seasonEpisodes[currentEpisodeIndex + 1] : null;
 
@@ -1094,6 +1099,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
                 title={`${room.animeName}${room.episodeName ? ` — ${room.episodeName}` : ""}`}
                 introStart={parseTimeCode(sources.content?.opening?.start)}
                 introEnd={parseTimeCode(sources.content?.opening?.end)}
+                outroStart={parseTimeCode(sources.content?.next_episode)}
                 onNextEpisode={() => {
                   if (!nextEpisode) return;
                   void changeEpisode(nextEpisode);
@@ -1153,13 +1159,12 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
                 }}
               />
               {isHost && (
-                <div className="mt-2 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     disabled={!prevEpisode}
                     onClick={() => prevEpisode && void changeEpisode(prevEpisode)}
-                    className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-50 min-h-[36px]"
                   >
                     <ChevronLeft className="h-3.5 w-3.5" /> Önceki
                   </button>
@@ -1167,34 +1172,53 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
                     type="button"
                     disabled={!nextEpisode}
                     onClick={() => nextEpisode && void changeEpisode(nextEpisode)}
-                    className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-3 py-1 text-xs disabled:opacity-50 min-h-[36px]"
                   >
                     Sonraki <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowEpisodePicker(true)}
-                    className="inline-flex min-w-0 max-w-full flex-1 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs sm:flex-none"
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-xs min-h-[36px]"
                   >
                     <Play className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{room.episodeName || `Bölüm ${seasonEpisodes[currentEpisodeIndex]?.number ?? "?"}`}</span>
+                    <span className="truncate">{currentEpisode?.name || room.episodeName || "Bölüm seç"}</span>
                   </button>
-                  </div>
                   {showEpisodePicker && (
-                    <EpisodePickerPanel
-                      episodes={seasonEpisodes}
-                      activeEpisodeId={room.episodeId}
-                      onSelect={(ep) => {
-                        void changeEpisode(ep);
-                        setShowEpisodePicker(false);
-                      }}
-                      onClose={() => setShowEpisodePicker(false)}
-                    />
+                    <div className="w-full">
+                      <EpisodePickerPanel
+                        episodes={seasonEpisodes}
+                        activeEpisodeId={room.episodeId}
+                        onSelect={(ep) => {
+                          void changeEpisode(ep);
+                          setShowEpisodePicker(false);
+                        }}
+                        onClose={() => setShowEpisodePicker(false)}
+                      />
+                    </div>
                   )}
                 </div>
               )}
+              <div className="mt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-bold">
+                    {currentEpisode?.name || room.episodeName || "Bölüm"}
+                  </h2>
+                  {currentEpisode?.filler && <FillerBadge className="text-[11px]" />}
+                </div>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  {seasonName && <span>{seasonName}{currentEpisode?.number ? ` · Bölüm ${currentEpisode.number}` : ""}</span>}
+                  {!seasonName && currentEpisode?.number && <span>Bölüm {currentEpisode.number}</span>}
+                  {!seasonName && !currentEpisode?.number && room.animeName && <span>{room.animeName}</span>}
+                </p>
+                {currentEpisode?.overview && (
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)] max-w-3xl leading-relaxed">
+                    {currentEpisode.overview}
+                  </p>
+                )}
+              </div>
               {!isHost && (
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
                   <span>
                     <Shield className="mr-1 inline h-3 w-3" /> Oynatmayı host yönetir.
                   </span>
