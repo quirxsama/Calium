@@ -9,6 +9,7 @@ export type HistoryEntry = {
   progress: number; // seconds
   duration: number; // seconds
   updatedAt: number;
+  pendingNext?: boolean; // true when user finished the last available episode
 };
 
 export const FINISHED_EPISODE_REMAINING_SECONDS = 180;

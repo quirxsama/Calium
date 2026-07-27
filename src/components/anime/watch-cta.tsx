@@ -9,9 +9,10 @@ type Props = {
   animeId: string;
   firstEpisodeId?: string | null;
   isMovie?: boolean;
+  latestEpisodeId?: string | null;
 };
 
-export function WatchCta({ animeId, firstEpisodeId, isMovie = false }: Props) {
+export function WatchCta({ animeId, firstEpisodeId, isMovie = false, latestEpisodeId }: Props) {
   const historyEntry = useHistory().find((entry) => entry.animeId === animeId);
   const canWatch = Boolean(firstEpisodeId || isMovie);
 
@@ -20,11 +21,22 @@ export function WatchCta({ animeId, firstEpisodeId, isMovie = false }: Props) {
   const hasUnfinishedProgress = historyEntry
     ? !isEpisodeFinished(historyEntry.progress, historyEntry.duration)
     : false;
+
+  const hasNewEpisode =
+    historyEntry?.pendingNext === true &&
+    latestEpisodeId &&
+    latestEpisodeId !== historyEntry.episodeId;
+
   const targetEpisodeId = hasUnfinishedProgress
     ? historyEntry?.episodeId
+    : hasNewEpisode
+    ? latestEpisodeId
     : firstEpisodeId ?? "film";
+
   const label = hasUnfinishedProgress
     ? "Kaldığın Yerden Devam Et"
+    : hasNewEpisode
+    ? "Yeni Bölümü İzle"
     : isMovie && !firstEpisodeId
       ? "Filmi İzle"
       : "İlk Bölümü İzle";

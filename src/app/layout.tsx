@@ -7,6 +7,7 @@ import { Footer } from "@/components/layout/footer";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { RealtimeProvider } from "@/components/realtime/realtime-provider";
 import { InviteToast } from "@/components/social/invite-toast";
+import { DownloadQueueBar } from "@/components/player/download-queue-bar";
 import { getSiteUrl } from "@/lib/site-url";
 import {
   absoluteUrl,
@@ -157,6 +158,7 @@ export default function RootLayout({
           <main className="flex-1">{children}</main>
           <Footer />
           <MobileNav />
+          <DownloadQueueBar />
         </Providers>
       </body>
     </html>

@@ -17,6 +17,7 @@ import { cn, parseTimeCode } from "@/lib/utils";
 import type { SourceGroup, SubtitleData, SourceContent, EpisodeData } from "@/lib/anizium/schemas";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { FillerBadge } from "@/components/anime/filler-badge";
+import { upsertHistory } from "@/lib/storage/history";
 
 type Member = {
   userId: string;
@@ -98,6 +99,8 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
   const inviteShrinkTimerRef = useRef<number | null>(null);
   const overlayLineTimersRef = useRef<Map<string, { exitTimer: number; removeTimer: number }>>(new Map());
   const [roomAlert, setRoomAlert] = useState<AlertState>({ open: false, title: "" });
+  const lastHistorySaveRef = useRef(0);
+  const seasonNumRef = useRef(1);
 
   const showRoomAlert = useCallback((title: string, description?: string) => {
     setRoomAlert({ open: true, title, description });
@@ -125,6 +128,34 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
       player.pause();
     } catch {}
   }
+
+  const onTimeUpdate = useCallback((current: number, duration: number) => {
+    if (duration <= 0) return;
+    const now = Date.now();
+    if (now - lastHistorySaveRef.current < 4000) return;
+    lastHistorySaveRef.current = now;
+
+    const ep = seasonEpisodes.find((e) => e.ID === room.episodeId);
+    if (!ep) return;
+
+    upsertHistory({
+      animeId: room.animeId,
+      animeName: room.animeName,
+      poster: room.poster,
+      episodeId: room.episodeId,
+      episodeName: room.episodeName ?? ep.name,
+      episodeNumber:
+        typeof ep.number === "number"
+          ? ep.number
+          : ep.number
+          ? Number(ep.number)
+          : null,
+      seasonNumber: seasonNumRef.current,
+      progress: current,
+      duration,
+      updatedAt: now,
+    });
+  }, [room.animeId, room.animeName, room.poster, room.episodeId, room.episodeName, seasonEpisodes]);
 
   const refreshRoom = useCallback(async () => {
     try {
@@ -256,6 +287,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
               setSeasonName(s.name ?? null);
               seasonNum = Number(s.number) || 1;
               episodeNum = Number(ep.number) || 1;
+              seasonNumRef.current = seasonNum;
               matched = true;
               break outer;
             }
@@ -267,6 +299,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
           setSeasonEpisodes(first);
           setSeasonName(det.data.name ?? null);
           seasonNum = 1;
+          seasonNumRef.current = 1;
           episodeNum = 1;
         }
         const r = await fetch(
@@ -849,11 +882,8 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     });
     const data = await res.json();
     if (data.success) {
-      const p = playerRef.current;
       const sentAt = Date.now();
-      const playbackState = p
-        ? { time: p.currentTime, paused: p.paused, sentAt, episodeId: ep.ID, episodeName: ep.name ?? null }
-        : { time: 0, paused: true, sentAt, episodeId: ep.ID, episodeName: ep.name ?? null };
+      const playbackState = { time: 0, paused: false, sentAt, episodeId: ep.ID, episodeName: ep.name ?? null };
       pendingPlaybackResumeRef.current = playbackState;
       sendPlaybackRef.current?.("episode-change", playbackState);
       sendPlaybackRef.current?.("sync", playbackState);
@@ -1097,13 +1127,14 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
                 subtitles={sources.subtitles}
                 poster={room.poster}
                 title={`${room.animeName}${room.episodeName ? ` — ${room.episodeName}` : ""}`}
-                introStart={parseTimeCode(sources.content?.opening?.start)}
-                introEnd={parseTimeCode(sources.content?.opening?.end)}
-                outroStart={parseTimeCode(sources.content?.next_episode)}
-                onNextEpisode={() => {
+                introStart={isHost ? parseTimeCode(sources.content?.opening?.start) : null}
+                introEnd={isHost ? parseTimeCode(sources.content?.opening?.end) : null}
+                outroStart={isHost ? parseTimeCode(sources.content?.next_episode) : null}
+                onNextEpisode={isHost ? () => {
                   if (!nextEpisode) return;
                   void changeEpisode(nextEpisode);
-                }}
+                } : undefined}
+                onTimeUpdate={onTimeUpdate}
                 overlayTopRight={overlayTopRight}
                 overlayPersistentTopRight={overlayPersistentTopRight}
                 overlayRightRail={overlayRightRail}

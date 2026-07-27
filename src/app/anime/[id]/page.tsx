@@ -181,6 +181,8 @@ export default async function AnimeDetailPage({
   }
 
   const firstEp = details.seasons?.[0]?.episodes?.[0];
+  const lastSeason = details.seasons?.[details.seasons.length - 1];
+  const lastEp = lastSeason?.episodes?.[lastSeason.episodes.length - 1];
   const isMovie = details.type && ["movie", "film"].includes(details.type.toLowerCase().trim());
   const rating = details.imdb_point ? Number(details.imdb_point) : null;
   const genres = details.genre ?? [];
@@ -322,7 +324,7 @@ export default async function AnimeDetailPage({
             )}
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <WatchCta animeId={details.ID} firstEpisodeId={firstEp?.ID ?? null} isMovie={Boolean(isMovie)} />
+              <WatchCta animeId={details.ID} firstEpisodeId={firstEp?.ID ?? null} isMovie={Boolean(isMovie)} latestEpisodeId={lastEp?.ID ?? null} />
               <FavoriteButton
                 id={details.ID}
                 name={details.name}

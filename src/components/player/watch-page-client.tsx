@@ -17,6 +17,7 @@ import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
 import { cn, formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
 import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
+import { DownloadButton } from "@/components/player/download-button";
 import { FillerBadge } from "@/components/anime/filler-badge";
 
 const AnimePlayer = dynamic(() => import("./anime-player").then((m) => m.AnimePlayer), {
@@ -187,17 +188,21 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
   }, [animeId, episodeId, seasonNum, epNum]);
 
   const lastSaveRef = useRef(0);
+  const markedFinishedRef = useRef(false);
   function onTU(current: number, duration: number) {
     if (!currentEp || duration <= 0) return;
     const now = Date.now();
     if (now - lastSaveRef.current < 4000) return;
     lastSaveRef.current = now;
 
-    const nextWatchEpisode = isEpisodeFinished(current, duration) ? nextEp : null;
+    const isFinished = isEpisodeFinished(current, duration);
+    const nextWatchEpisode = isFinished ? nextEp : null;
     const historyEpisode = nextWatchEpisode?.ep ?? currentEp;
     const historySeason = nextWatchEpisode
       ? details.seasons.find((season) => season.ID === nextWatchEpisode.seasonId) ?? currentSeason
       : currentSeason;
+
+    const noMoreEpisodes = isFinished && !nextEp;
 
     upsertHistory({
       animeId: details.ID,
@@ -217,10 +222,15 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
           : historySeason?.number
           ? Number(historySeason.number)
           : null,
-      progress: nextWatchEpisode ? 0 : current,
-      duration: nextWatchEpisode ? 0 : duration,
+      progress: nextWatchEpisode ? 0 : noMoreEpisodes ? duration : current,
+      duration: nextWatchEpisode ? 0 : noMoreEpisodes ? duration : duration,
       updatedAt: now,
+      pendingNext: noMoreEpisodes ? true : undefined,
     });
+
+    if (noMoreEpisodes) {
+      markedFinishedRef.current = true;
+    }
   }
 
   function onEnded() {
@@ -228,7 +238,34 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
       router.push(
         `/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`
       );
+      return;
     }
+
+    if (!currentEp || markedFinishedRef.current) return;
+
+    upsertHistory({
+      animeId: details.ID,
+      animeName: details.name,
+      poster: details.poster ?? details.details_banner ?? null,
+      episodeId: currentEp.ID,
+      episodeName: currentEp.name,
+      episodeNumber:
+        typeof currentEp.number === "number"
+          ? currentEp.number
+          : currentEp.number
+          ? Number(currentEp.number)
+          : null,
+      seasonNumber:
+        typeof currentSeason?.number === "number"
+          ? currentSeason.number
+          : currentSeason?.number
+          ? Number(currentSeason.number)
+          : null,
+      progress: 999999,
+      duration: 1,
+      updatedAt: Date.now(),
+      pendingNext: true,
+    });
   }
 
   return (
@@ -264,6 +301,31 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
               episodeId={currentEp.ID}
               episodeName={currentEp.name}
               poster={details.poster ?? details.details_banner ?? null}
+            />
+          )}
+          {currentEp && state.status === "ready" && (
+            <DownloadButton
+              animeId={details.ID}
+              animeName={details.name}
+              poster={details.poster ?? details.details_banner ?? null}
+              episodeId={currentEp.ID}
+              episodeName={currentEp.name}
+              episodeNumber={
+                typeof currentEp.number === "number"
+                  ? currentEp.number
+                  : currentEp.number
+                  ? Number(currentEp.number)
+                  : null
+              }
+              seasonNumber={
+                typeof currentSeason?.number === "number"
+                  ? currentSeason.number
+                  : currentSeason?.number
+                  ? Number(currentSeason.number)
+                  : null
+              }
+              groups={state.groups}
+              subtitles={state.subtitles}
             />
           )}
         </div>
@@ -338,6 +400,32 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
                     episodeId={currentEp.ID}
                     episodeName={currentEp.name}
                     poster={details.poster ?? details.details_banner ?? null}
+                    className="w-full justify-center"
+                  />
+                )}
+                {currentEp && state.status === "ready" && (
+                  <DownloadButton
+                    animeId={details.ID}
+                    animeName={details.name}
+                    poster={details.poster ?? details.details_banner ?? null}
+                    episodeId={currentEp.ID}
+                    episodeName={currentEp.name}
+                    episodeNumber={
+                      typeof currentEp.number === "number"
+                        ? currentEp.number
+                        : currentEp.number
+                        ? Number(currentEp.number)
+                        : null
+                    }
+                    seasonNumber={
+                      typeof currentSeason?.number === "number"
+                        ? currentSeason.number
+                        : currentSeason?.number
+                        ? Number(currentSeason.number)
+                        : null
+                    }
+                    groups={state.groups}
+                    subtitles={state.subtitles}
                     className="w-full justify-center"
                   />
                 )}
