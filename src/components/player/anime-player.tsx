@@ -30,6 +30,7 @@ import { toAniziumAssetProxyUrl } from "@/lib/anizium/asset-proxy";
 import { cn } from "@/lib/utils";
 import { MobileSeekOverlay } from "./mobile-seek-overlay";
 import { GestureHint } from "./gesture-hint";
+import { IntroSongBadge, type IntroSongData } from "./intro-song-badge";
 const AUDIO_STORAGE_KEY = "anizium-audio-track";
 const VOLUME_STORAGE_KEY = "anizium-player-volume";
 const PLAYER_PREFS_STORAGE_KEY = "calium:player-prefs";
@@ -52,6 +53,7 @@ type Props = {
   storageKey?: string;
   introStart?: number | null;
   introEnd?: number | null;
+  introSong?: IntroSongData | null;
   outroStart?: number | null;
   nextEpisodeHref?: string | null;
   onNextEpisode?: () => void;
@@ -197,6 +199,7 @@ export function AnimePlayer({
   onPlayerReady,
   introStart,
   introEnd,
+  introSong,
   outroStart,
   nextEpisodeHref,
   onNextEpisode,
@@ -217,7 +220,10 @@ export function AnimePlayer({
   const outroStartRef = useRef<number | null>(null);
   const introTimerRef = useRef<number | null>(null);
   const introStartRef = useRef<number | null>(null);
+  const introSongFadeTimerRef = useRef<number | null>(null);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
+  const [showIntroSong, setShowIntroSong] = useState(false);
+  const [isIntroSongFadingOut, setIsIntroSongFadingOut] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
   const [introProgress, setIntroProgress] = useState(0);
   const [outroProgress, setOutroProgress] = useState(0);
@@ -533,6 +539,10 @@ export function AnimePlayer({
         window.clearTimeout(overlayControlsTimerRef.current);
         overlayControlsTimerRef.current = null;
       }
+      if (introSongFadeTimerRef.current) {
+        window.clearTimeout(introSongFadeTimerRef.current);
+        introSongFadeTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -591,6 +601,43 @@ export function AnimePlayer({
     // Intro skip visibility
     if (introStart != null && introEnd != null && introEnd > introStart) {
       setShowIntroSkip(t >= introStart && t < introEnd);
+
+      // Intro song badge visibility & 3s fade-out
+      if (introSong) {
+        if (t >= introStart && t < introEnd) {
+          if (introSongFadeTimerRef.current) {
+            window.clearTimeout(introSongFadeTimerRef.current);
+            introSongFadeTimerRef.current = null;
+          }
+          setShowIntroSong(true);
+          setIsIntroSongFadingOut(false);
+        } else if (t >= introEnd && t < introEnd + 3.5) {
+          if (showIntroSong && !isIntroSongFadingOut) {
+            setIsIntroSongFadingOut(true);
+            if (!introSongFadeTimerRef.current) {
+              introSongFadeTimerRef.current = window.setTimeout(() => {
+                setShowIntroSong(false);
+                setIsIntroSongFadingOut(false);
+                introSongFadeTimerRef.current = null;
+              }, 3000);
+            }
+          }
+        } else {
+          if (introSongFadeTimerRef.current) {
+            window.clearTimeout(introSongFadeTimerRef.current);
+            introSongFadeTimerRef.current = null;
+          }
+          setShowIntroSong(false);
+          setIsIntroSongFadingOut(false);
+        }
+      }
+    } else if (showIntroSong) {
+      if (introSongFadeTimerRef.current) {
+        window.clearTimeout(introSongFadeTimerRef.current);
+        introSongFadeTimerRef.current = null;
+      }
+      setShowIntroSong(false);
+      setIsIntroSongFadingOut(false);
     }
     // Outro skip visibility
     if (outroStart != null && outroStart > 0) {
@@ -982,6 +1029,14 @@ export function AnimePlayer({
           <div className="absolute bottom-20 right-3 z-[55] hidden max-h-[65%] w-[min(35vw,360px)] overflow-hidden md:block">
             {overlayRightRail}
           </div>
+        )}
+        {/* Intro Song Badge Overlay (Bottom-Left) */}
+        {showIntroSong && (
+          <IntroSongBadge
+            song={introSong ?? null}
+            visible={showIntroSong}
+            isFadingOut={isIntroSongFadingOut}
+          />
         )}
         {/* Intro Skip Overlay */}
         {showIntroSkip && (

@@ -260,3 +260,18 @@ model Preference {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model EpisodeIntroSong {
+  id         String   @id @default(cuid())
+  animeId    String
+  episodeId  String   @unique
+  title      String?
+  artist     String?
+  coverUrl   String?
+  spotifyUrl String?
+  found      Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([animeId])
+}

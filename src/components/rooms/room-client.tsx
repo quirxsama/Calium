@@ -18,6 +18,7 @@ import type { SourceGroup, SubtitleData, SourceContent, EpisodeData } from "@/li
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { FillerBadge } from "@/components/anime/filler-badge";
 import { upsertHistory } from "@/lib/storage/history";
+import type { IntroSongData } from "@/components/player/intro-song-badge";
 
 type Member = {
   userId: string;
@@ -330,6 +331,35 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
       ctrl.abort();
     };
   }, [room.animeId, room.episodeId]);
+
+  // Oda bölümü için intro şarkısı sorgula
+  const [introSong, setIntroSong] = useState<IntroSongData | null>(null);
+  useEffect(() => {
+    queueMicrotask(() => setIntroSong(null));
+    if (!room.animeId || !room.episodeId) return;
+
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const sp = new URLSearchParams({
+          animeId: room.animeId,
+          episodeId: room.episodeId,
+        });
+        if (room.animeName) sp.set("animeName", room.animeName);
+        const res = await fetch(`/api/anime/intro-song?${sp.toString()}`, {
+          signal: ctrl.signal,
+        });
+        const data = await res.json();
+        if (data.success && data.found && data.song) {
+          setIntroSong(data.song);
+        }
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === "AbortError") return;
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [room.animeId, room.episodeId, room.animeName]);
 
   useEffect(() => {
     let active = true;
@@ -1129,6 +1159,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
                 title={`${room.animeName}${room.episodeName ? ` — ${room.episodeName}` : ""}`}
                 introStart={isHost ? parseTimeCode(sources.content?.opening?.start) : null}
                 introEnd={isHost ? parseTimeCode(sources.content?.opening?.end) : null}
+                introSong={introSong}
                 outroStart={isHost ? parseTimeCode(sources.content?.next_episode) : null}
                 onNextEpisode={isHost ? () => {
                   if (!nextEpisode) return;

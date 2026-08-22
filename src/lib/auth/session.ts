@@ -1,14 +1,28 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { verifyToken, type TokenPayload } from "./jwt";
 import { prisma } from "@/lib/db";
 
 const COOKIE_NAME = "calium_session";
 
 export async function getSession(): Promise<TokenPayload | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifyToken(token);
+  // 1. Check cookies
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(COOKIE_NAME)?.value;
+    if (token) return verifyToken(token);
+  } catch (_) {}
+
+  // 2. Check Authorization header (Bearer token)
+  try {
+    const headersList = await headers();
+    const authHeader = headersList.get("authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.substring(7).trim();
+      if (token) return verifyToken(token);
+    }
+  } catch (_) {}
+
+  return null;
 }
 
 export async function getCurrentUser() {

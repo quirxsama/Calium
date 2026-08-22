@@ -19,6 +19,7 @@ import { EpisodeList } from "@/components/anime/episode-list";
 import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
 import { DownloadButton } from "@/components/player/download-button";
 import { FillerBadge } from "@/components/anime/filler-badge";
+import type { IntroSongData } from "./intro-song-badge";
 
 const AnimePlayer = dynamic(() => import("./anime-player").then((m) => m.AnimePlayer), {
   ssr: false,
@@ -94,6 +95,7 @@ function getNextEpisode(
 export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: Props) {
   const router = useRouter();
   const [state, setState] = useState<SourcesState>({ status: "loading" });
+  const [introSong, setIntroSong] = useState<IntroSongData | null>(null);
   const [startAt, setStartAt] = useState<number>(0);
 
   const isMovie = episodeId === "film";
@@ -186,6 +188,38 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
     })();
     return () => ctrl.abort();
   }, [animeId, episodeId, seasonNum, epNum]);
+
+  // Bölüm açıldığında intro şarkısını sunucudan sorgula/tara (bekletmeden arka planda)
+  useEffect(() => {
+    queueMicrotask(() => setIntroSong(null));
+    if (!animeId || !episodeId) return;
+
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const sp = new URLSearchParams({
+          animeId,
+          episodeId,
+        });
+        if (details.name) sp.set("animeName", details.name);
+        if (Number.isFinite(seasonNum)) sp.set("season", String(seasonNum));
+        if (Number.isFinite(epNum)) sp.set("episode", String(epNum));
+
+        const res = await fetch(`/api/anime/intro-song?${sp.toString()}`, {
+          signal: ctrl.signal,
+        });
+        const data = await res.json();
+        if (data.success && data.found && data.song) {
+          setIntroSong(data.song);
+        }
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === "AbortError") return;
+        console.warn("[IntroSong] Fetch error:", e);
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [animeId, episodeId, seasonNum, epNum, details.name]);
 
   const lastSaveRef = useRef(0);
   const markedFinishedRef = useRef(false);
@@ -362,6 +396,7 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
                 onEnded={onEnded}
                 introStart={parseTimeCode(state.content?.opening?.start)}
                 introEnd={parseTimeCode(state.content?.opening?.end)}
+                introSong={introSong}
                 outroStart={parseTimeCode(state.content?.next_episode)}
                 nextEpisodeHref={nextEp ? `/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}` : null}
               />

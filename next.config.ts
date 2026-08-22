@@ -41,13 +41,17 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "image.tmdb.org" },
       { protocol: "https", hostname: "i.imgur.com" },
       { protocol: "https", hostname: "wsrv.nl" },
+      { protocol: "https", hostname: "cdn-images.dzcdn.net" },
+      { protocol: "https", hostname: "e-cdns-images.dzcdn.net" },
+      { protocol: "https", hostname: "**.mzstatic.com" },
+      { protocol: "https", hostname: "**.animethemes.moe" },
     ],
   },
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
+  serverExternalPackages: ["shazamio-core"],
   allowedDevOrigins: ['192.168.1.108'],
-
 };
 
 export default nextConfig;
