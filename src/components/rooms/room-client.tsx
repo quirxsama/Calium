@@ -1527,6 +1527,8 @@ function EpisodePickerPanel({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const activeItemRef = useRef<HTMLLIElement | null>(null);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return episodes;
@@ -1534,6 +1536,19 @@ function EpisodePickerPanel({
       ep.name.toLowerCase().includes(q) || String(ep.number ?? "").toLowerCase().includes(q)
     );
   }, [episodes, query]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (activeItemRef.current) {
+        activeItemRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [activeEpisodeId]);
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)]/96 p-3 shadow-lg backdrop-blur">
@@ -1559,7 +1574,7 @@ function EpisodePickerPanel({
         {filtered.map((ep) => {
           const active = ep.ID === activeEpisodeId;
           return (
-            <li key={ep.ID}>
+            <li key={ep.ID} ref={active ? activeItemRef : null}>
               <button
                 type="button"
                 onClick={() => onSelect(ep)}

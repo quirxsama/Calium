@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AniziumImage } from "./anizium-image";
 import {
@@ -56,10 +56,7 @@ export function EpisodeList({
 }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortDir>("asc");
-  const [page, setPage] = useState(1);
-  // Aktif bölüm değişiminde sayfayı senkron tutmak için önceki değerleri state'te izleriz
-  // (React 19: useEffect içinde setState çağrısından kaçınılır).
-  const [prevActiveEp, setPrevActiveEp] = useState(activeEpisodeId);
+  const activeRowRef = useRef<HTMLLIElement | null>(null);
 
   // Arama ve sıralama uygula
   const filtered = useMemo<EpisodeListItem[]>(() => {
@@ -97,9 +94,21 @@ export function EpisodeList({
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
-  // activeEpisodeId değiştiğinde, o bölümün bulunduğu sayfayı seç.
-  if (activeEpisodeId !== prevActiveEp) {
+  // İlk yüklemede aktif bölüm varsa doğrudan o bölümün bulunduğu blok sayfasından başla
+  const [page, setPage] = useState(() => {
+    if (!activeEpisodeId || episodes.length === 0) return 1;
+    const sorted = [...episodes].sort((a, b) => epNum(a) - epNum(b));
+    const idx = sorted.findIndex((e) => e.ID === activeEpisodeId);
+    return idx >= 0 ? Math.floor(idx / PAGE_SIZE) + 1 : 1;
+  });
+
+  const [prevActiveEp, setPrevActiveEp] = useState(activeEpisodeId);
+  const [prevEpisodes, setPrevEpisodes] = useState(episodes);
+
+  // activeEpisodeId veya episodes değiştiğinde sayfayı senkronize et
+  if (activeEpisodeId !== prevActiveEp || episodes !== prevEpisodes) {
     setPrevActiveEp(activeEpisodeId);
+    setPrevEpisodes(episodes);
     if (activeEpisodeId) {
       const idx = filtered.findIndex((item) => item.kind === "episode" && item.ep.ID === activeEpisodeId);
       if (idx >= 0) setPage(Math.floor(idx / PAGE_SIZE) + 1);
@@ -107,6 +116,22 @@ export function EpisodeList({
   }
 
   const safePage = Math.min(Math.max(1, page), totalPages);
+
+  // Aktif bölüme otomatik kaydır
+  useEffect(() => {
+    if (!activeEpisodeId) return;
+    const timer = setTimeout(() => {
+      if (activeRowRef.current) {
+        activeRowRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+      }
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [activeEpisodeId, safePage]);
 
   function onQueryChange(v: string) {
     setQuery(v);
@@ -222,6 +247,7 @@ export function EpisodeList({
                 ep={ep.ep}
                 active={ep.ep.ID === activeEpisodeId}
                 compact
+                rowRef={ep.ep.ID === activeEpisodeId ? activeRowRef : undefined}
               />
             ) : (
               <UpcomingEpisodeRow key={ep.upcoming.id} upcoming={ep.upcoming} compact />
@@ -237,6 +263,7 @@ export function EpisodeList({
                 animeId={animeId}
                 ep={ep.ep}
                 active={ep.ep.ID === activeEpisodeId}
+                rowRef={ep.ep.ID === activeEpisodeId ? activeRowRef : undefined}
               />
             ) : (
               <UpcomingEpisodeRow key={ep.upcoming.id} upcoming={ep.upcoming} />
@@ -326,16 +353,18 @@ function EpisodeRow({
   ep,
   active,
   compact,
+  rowRef,
 }: {
   animeId: string;
   ep: EpisodeData;
   active?: boolean;
   compact?: boolean;
+  rowRef?: React.Ref<HTMLLIElement>;
 }) {
   const href = `/izle/${encodeURIComponent(animeId)}/${encodeURIComponent(ep.ID)}`;
   if (compact) {
     return (
-      <li>
+      <li ref={rowRef}>
         <Link
           href={href}
           className={cn(
@@ -375,7 +404,7 @@ function EpisodeRow({
     );
   }
   return (
-    <li>
+    <li ref={rowRef}>
       <Link
         href={href}
         className={cn(
@@ -433,14 +462,32 @@ function RangeChips({
   onPage: (p: number) => void;
   compact: boolean;
 }) {
+  const activeChipRef = useRef<HTMLButtonElement | null>(null);
+
   // Bölüm aralığı etiketi: ör. "1-50", "51-100"
-  const chips = Array.from({ length: totalPages }, (_, i) => {
-    const p = i + 1;
-    const from = (p - 1) * PAGE_SIZE + 1;
-    const to = Math.min(total, p * PAGE_SIZE);
-    return { p, label: `${from}-${to}` };
-  });
-  const ordered = sort === "asc" ? chips : chips.slice().reverse();
+  const chips = useMemo(() => {
+    const arr = Array.from({ length: totalPages }, (_, i) => {
+      const p = i + 1;
+      const from = (p - 1) * PAGE_SIZE + 1;
+      const to = Math.min(total, p * PAGE_SIZE);
+      return { p, label: `${from}-${to}` };
+    });
+    return sort === "asc" ? arr : arr.slice().reverse();
+  }, [totalPages, total, sort]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (activeChipRef.current) {
+        activeChipRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "center",
+        });
+      }
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [page]);
 
   return (
     <div
@@ -449,11 +496,12 @@ function RangeChips({
         compact ? "snap-x" : "flex-wrap"
       )}
     >
-      {ordered.map((c) => {
+      {chips.map((c) => {
         const active = c.p === page;
         return (
           <button
             key={c.p}
+            ref={active ? activeChipRef : null}
             onClick={() => onPage(c.p)}
             className={cn(
               "snap-start shrink-0 rounded-full border px-3 h-7 text-xs font-medium transition",
