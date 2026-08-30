@@ -20,6 +20,7 @@ import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
 import { DownloadButton } from "@/components/player/download-button";
 import { FillerBadge } from "@/components/anime/filler-badge";
 import type { IntroSongData } from "./intro-song-badge";
+import { getRecapForEpisode, type RecapInterval } from "@/lib/anime-skip/client";
 
 const AnimePlayer = dynamic(() => import("./anime-player").then((m) => m.AnimePlayer), {
   ssr: false,
@@ -96,6 +97,7 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
   const router = useRouter();
   const [state, setState] = useState<SourcesState>({ status: "loading" });
   const [introSong, setIntroSong] = useState<IntroSongData | null>(null);
+  const [recap, setRecap] = useState<RecapInterval | null>(null);
   const [startAt, setStartAt] = useState<number>(0);
 
   const isMovie = episodeId === "film";
@@ -220,6 +222,25 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
 
     return () => ctrl.abort();
   }, [animeId, episodeId, seasonNum, epNum, details.name]);
+
+  // Bölüm açıldığında özet (recap) zamanlarını anime-skip'ten çek
+  useEffect(() => {
+    queueMicrotask(() => setRecap(null));
+    if (!details.name || !Number.isFinite(epNum)) return;
+
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        const res = await getRecapForEpisode(details.name, epNum, ctrl.signal);
+        setRecap(res);
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === "AbortError") return;
+        console.warn("[Recap] Fetch error:", e);
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [details.name, epNum, episodeId]);
 
   const lastSaveRef = useRef(0);
   const markedFinishedRef = useRef(false);
@@ -396,6 +417,8 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
                 onEnded={onEnded}
                 introStart={parseTimeCode(state.content?.opening?.start)}
                 introEnd={parseTimeCode(state.content?.opening?.end)}
+                recapStart={recap?.recapStart}
+                recapEnd={recap?.recapEnd}
                 introSong={introSong}
                 outroStart={parseTimeCode(state.content?.next_episode)}
                 nextEpisodeHref={nextEp ? `/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}` : null}

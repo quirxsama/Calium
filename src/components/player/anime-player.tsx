@@ -53,6 +53,8 @@ type Props = {
   storageKey?: string;
   introStart?: number | null;
   introEnd?: number | null;
+  recapStart?: number | null;
+  recapEnd?: number | null;
   introSong?: IntroSongData | null;
   outroStart?: number | null;
   nextEpisodeHref?: string | null;
@@ -199,6 +201,8 @@ export function AnimePlayer({
   onPlayerReady,
   introStart,
   introEnd,
+  recapStart,
+  recapEnd,
   introSong,
   outroStart,
   nextEpisodeHref,
@@ -222,6 +226,7 @@ export function AnimePlayer({
   const introStartRef = useRef<number | null>(null);
   const introSongFadeTimerRef = useRef<number | null>(null);
   const [showIntroSkip, setShowIntroSkip] = useState(false);
+  const [showRecapSkip, setShowRecapSkip] = useState(false);
   const [showIntroSong, setShowIntroSong] = useState(false);
   const [isIntroSongFadingOut, setIsIntroSongFadingOut] = useState(false);
   const [showOutroSkip, setShowOutroSkip] = useState(false);
@@ -477,6 +482,16 @@ export function AnimePlayer({
     }
   }, [cancelOutroAutoAdvance, focusPlayer, introEnd]);
 
+  const skipRecap = useCallback(() => {
+    const p = playerRef.current;
+    if (p && recapEnd != null) {
+      cancelOutroAutoAdvance();
+      p.currentTime = recapEnd;
+      setShowRecapSkip(false);
+      focusPlayer();
+    }
+  }, [cancelOutroAutoAdvance, focusPlayer, recapEnd]);
+
   useEffect(() => {
     if (!showIntroSkip || !playerPrefs.autoSkipIntro || introEnd == null) {
       if (introTimerRef.current) {
@@ -638,6 +653,13 @@ export function AnimePlayer({
       }
       setShowIntroSong(false);
       setIsIntroSongFadingOut(false);
+    }
+    // Recap skip visibility (özet başladığında en fazla 10 saniye görünsün)
+    if (recapStart != null && recapEnd != null && recapEnd > recapStart) {
+      const recapDisplayEnd = Math.min(recapEnd, recapStart + 10);
+      setShowRecapSkip(t >= recapStart && t < recapDisplayEnd);
+    } else {
+      setShowRecapSkip(false);
     }
     // Outro skip visibility
     if (outroStart != null && outroStart > 0) {
@@ -1053,6 +1075,21 @@ export function AnimePlayer({
             )}
             <span className="relative z-10 flex items-center gap-1.5">
               <SkipForward className="h-4 w-4" /> Intro&apos;yu Atla
+            </span>
+          </button>
+        )}
+        {/* Recap Skip Overlay */}
+        {showRecapSkip && (
+          <button
+            onClick={skipRecap}
+            className={cn(
+              "absolute right-4 z-50 flex overflow-hidden rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90 animate-in fade-in",
+              showIntroSkip ? "bottom-30" : "bottom-18"
+            )}
+            aria-label="Özeti atla"
+          >
+            <span className="relative z-10 flex items-center gap-1.5">
+              <SkipForward className="h-4 w-4" /> Özeti Atla
             </span>
           </button>
         )}
