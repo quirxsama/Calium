@@ -50,9 +50,8 @@ export async function requireUserWithPassword() {
     where: { id: session.sub },
     select: { ...SAFE_USER_SELECT, passwordHash: true },
   });
-  if (!user) {
-    return { user: null, error: NextResponse.json({ success: false, error: "Kullanıcı bulunamadı." }, { status: 401 }) };
+  if (!user?.passwordHash) {
+    return { user: null, error: NextResponse.json({ success: false, error: "reauth_required" }, { status: 403 }) };
   }
-
-  return { user, error: null };
+  return { user: { ...user, passwordHash: user.passwordHash }, error: null };
 }

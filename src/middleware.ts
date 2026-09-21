@@ -28,6 +28,9 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname.startsWith("/api/auth/oauth/") && !req.headers.has("origin") && !req.headers.has("referer")) return NextResponse.next();
+  if (req.headers.get("authorization")?.startsWith("Bearer ") && !req.cookies.has("calium_session")) return NextResponse.next();
+
   const host = req.headers.get("host");
   if (!host) {
     return NextResponse.json(

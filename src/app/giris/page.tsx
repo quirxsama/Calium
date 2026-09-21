@@ -28,6 +28,62 @@ export default function LoginPage() {
     }
   }
 
+  async function handleOAuth(provider: "anilist" | "mal") {
+    setError("");
+    setLoading(true);
+    try {
+      const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+      const random = new Uint8Array(43);
+      crypto.getRandomValues(random);
+      const verifier = Array.from(random, (byte) => charset[byte % charset.length]).join("");
+      const encoder = new TextEncoder();
+      const hash = await crypto.subtle.digest("SHA-256", encoder.encode(verifier));
+      const challenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+      const startRes = await fetch(`/api/auth/oauth/${provider}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "login", platform: "web", challenge }),
+      });
+      if (!startRes.ok) {
+        const err = await startRes.json().catch(() => ({}));
+        throw new Error(err.error || "Giriş başlatılamadı");
+      }
+      const { authorizationUrl, transactionId } = await startRes.json();
+      const popup = window.open(authorizationUrl, "_blank", "width=600,height=750");
+
+      let loggedIn = false;
+      for (let i = 0; i < 120; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const exRes = await fetch("/api/auth/oauth/exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transactionId, verifier }),
+        });
+        if (exRes.status === 200) {
+          const data = await exRes.json();
+          if (data.pending) continue;
+          if (data.success) {
+            loggedIn = true;
+            popup?.close();
+            window.location.href = "/";
+            break;
+          }
+        } else if (exRes.status >= 400 && exRes.status !== 404) {
+          const err = await exRes.json().catch(() => ({}));
+          throw new Error(err.error || "Yetkilendirme başarısız");
+        }
+      }
+      if (!loggedIn) throw new Error("Giriş zaman aşımına uğradı");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Giriş yapılamadı");
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -100,6 +156,31 @@ export default function LoginPage() {
               Giriş Yap
             </button>
           </form>
+
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-[var(--border)]" />
+            <span className="text-xs text-[var(--muted-foreground)]">VEYA</span>
+            <div className="h-px flex-1 bg-[var(--border)]" />
+          </div>
+
+          <div className="space-y-2.5">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => handleOAuth("anilist")}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#02A9FF]/40 bg-[#02A9FF]/10 py-2.5 text-sm font-semibold text-[#02A9FF] transition hover:bg-[#02A9FF]/20 disabled:opacity-50"
+            >
+              AniList ile Giriş Yap
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => handleOAuth("mal")}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#2E51A2]/40 bg-[#2E51A2]/10 py-2.5 text-sm font-semibold text-[#688ee4] transition hover:bg-[#2E51A2]/20 disabled:opacity-50"
+            >
+              MyAnimeList ile Giriş Yap
+            </button>
+          </div>
 
           <p className="mt-6 text-center text-sm text-[var(--muted-foreground)]">
             Hesabınız yok mu?{" "}

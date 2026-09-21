@@ -9,9 +9,12 @@ datasource db {
 
 model User {
   id            String   @id @default(cuid())
-  email         String   @unique
+  email         String?  @unique
   username      String   @unique
-  passwordHash  String
+  passwordHash  String?
+  integrations  Integration[]
+  tracking      TrackingEntry[]
+  oauth         OAuthTransaction[]
   displayName   String?
   avatarUrl     String?
   bio           String?
@@ -259,6 +262,78 @@ model Preference {
   defaultDubLanguage String @default("ja")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Integration {
+  id             String @id @default(cuid())
+  userId         String
+  provider       String
+  providerUserId String
+  username       String
+  credentials    String
+  expiresAt      DateTime
+  status         String @default("connected")
+  error          String?
+  lastSyncedAt   DateTime?
+  nextRunAt      DateTime @default(now())
+  leaseUntil     DateTime?
+  leaseToken     String?
+  attempts       Int @default(0)
+  generation     Int @default(0)
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots      SyncSnapshot[]
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@index([nextRunAt, leaseUntil])
+}
+
+model OAuthTransaction {
+  id          String @id @default(cuid())
+  provider    String
+  intent      String
+  platform    String
+  challenge   String
+  stateHash   String @unique
+  browserHash String?
+  verifier    String?
+  userId      String?
+  status      String @default("pending")
+  error       String?
+  expiresAt   DateTime
+  user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+
+model TrackingEntry {
+  id            String @id @default(cuid())
+  userId        String
+  sourceId      String?
+  malId         Int?
+  anilistId     Int?
+  title         String
+  totalEpisodes Int?
+  mapping       String @default("unmapped")
+  value         String
+  version       Int @default(1)
+  deleted       Boolean @default(false)
+  updatedAt     DateTime @updatedAt
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots     SyncSnapshot[]
+  @@unique([userId, sourceId])
+  @@unique([userId, malId])
+  @@unique([userId, anilistId])
+}
+
+model SyncSnapshot {
+  integrationId String
+  entryId       String
+  base          String?
+  remote        String?
+  conflict      String?
+  version       Int @default(0)
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  entry         TrackingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  @@id([integrationId, entryId])
 }
 
 model EpisodeIntroSong {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Search, Flame, Heart, Clock, Home, Sparkles, Mic, Users, CalendarDays } from "lucide-react";
+import { Search, Flame, Heart, Clock, Home, Sparkles, Mic, Users, CalendarDays, BookOpen } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AccountMenu } from "@/components/account/account-menu";
 import { NotificationBell } from "@/components/social/notification-bell";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/", label: "Ana Sayfa", icon: Home },
   { href: "/kesfet", label: "Keşfet", icon: Sparkles },
+  { href: "/kutuphanem", label: "Kütüphanem", icon: BookOpen },
   { href: "/yayin-takvimi", label: "Takvim", icon: CalendarDays },
   { href: "/top", label: "Top 100", icon: Flame },
   { href: "/dublaj", label: "Türkçe Dublaj", icon: Mic },
@@ -80,7 +81,7 @@ export function Navbar() {
                 )}
               >
                 {active && (
-                  <span className="absolute inset-0 rounded-full bg-[var(--muted)] ring-1 ring-[var(--border)]" aria-hidden />
+                  <span className="absolute inset-0 rounded-full bg-[var(--muted)] ring-1 ring-[var(--border)]" aria-hidden="true" />
                 )}
                 <span className="relative">{n.label}</span>
               </Link>

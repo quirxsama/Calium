@@ -6,6 +6,7 @@ import { getAnimeDetails, getCalendar, getSimilarAnimes, getTMDBCredits } from "
 import { SeasonTabs } from "@/components/anime/season-tabs";
 import { FavoriteButton } from "@/components/anime/favorite-button";
 import { AddToListButton } from "@/components/anime/add-to-list-button";
+import { LibraryStatusButton } from "@/components/anime/library-status-button";
 import { AnimePosterFlip } from "@/components/anime/anime-poster-flip";
 import { CastSection } from "@/components/anime/cast-section";
 import { RecommendedAnime } from "@/components/anime/recommended-anime";
@@ -325,6 +326,12 @@ export default async function AnimeDetailPage({
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <WatchCta animeId={details.ID} firstEpisodeId={firstEp?.ID ?? null} isMovie={Boolean(isMovie)} latestEpisodeId={lastEp?.ID ?? null} />
+              <LibraryStatusButton
+                animeId={details.ID}
+                animeName={details.name}
+                poster={details.poster ?? details.details_banner ?? null}
+                totalEpisodes={details.seasons?.reduce((acc, s) => acc + (s.episodes?.length || 0), 0) || null}
+              />
               <FavoriteButton
                 id={details.ID}
                 name={details.name}

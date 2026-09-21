@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/require-user";
+import { reconcileHistoryToLibrary } from "@/server/integrations/reconcile.mjs";
+import { enqueue } from "@/server/integrations/worker.mjs";
 
 const HistoryItemSchema = z.object({
   animeId: z.string().min(1).max(64),
@@ -123,6 +125,11 @@ export async function POST(req: NextRequest) {
       });
     })
   );
+
+  try {
+    await reconcileHistoryToLibrary(user!.id, prisma);
+    await enqueue(prisma, user!.id);
+  } catch {}
 
   return NextResponse.json({ success: true });
 }

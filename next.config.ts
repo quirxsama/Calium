@@ -45,6 +45,8 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "e-cdns-images.dzcdn.net" },
       { protocol: "https", hostname: "**.mzstatic.com" },
       { protocol: "https", hostname: "**.animethemes.moe" },
+      { protocol: "https", hostname: "**.anilist.co" },
+      { protocol: "https", hostname: "**.myanimelist.net" },
     ],
   },
   experimental: {

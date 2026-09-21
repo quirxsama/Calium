@@ -3,17 +3,19 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
-import { User, KeyRound, Palette, Subtitles, Play, Loader2 } from "lucide-react";
+import { User, KeyRound, Palette, Subtitles, Play, Loader2, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProfileTab } from "@/components/settings/profile-tab";
 import { AccountTab } from "@/components/settings/account-tab";
 import { AppearanceTab } from "@/components/settings/appearance-tab";
 import { CaptionTab } from "@/components/settings/caption-tab";
 import { PlayerTab } from "@/components/settings/player-tab";
+import { IntegrationsTab } from "@/components/settings/integrations-tab";
 
 const TABS = [
   { key: "profil", label: "Profil", icon: User },
   { key: "hesap", label: "Hesap", icon: KeyRound },
+  { key: "entegrasyonlar", label: "Entegrasyonlar", icon: Link2 },
   { key: "gorunum", label: "Görünüm", icon: Palette },
   { key: "altyazi", label: "Altyazı", icon: Subtitles },
   { key: "oynatici", label: "Oynatıcı", icon: Play },
@@ -77,6 +79,7 @@ export default function SettingsPage() {
         <div className="min-w-0 flex-1">
           {tab === "profil" && <ProfileTab />}
           {tab === "hesap" && <AccountTab />}
+          {tab === "entegrasyonlar" && <IntegrationsTab />}
           {tab === "gorunum" && <AppearanceTab />}
           {tab === "altyazi" && <CaptionTab />}
           {tab === "oynatici" && <PlayerTab />}
