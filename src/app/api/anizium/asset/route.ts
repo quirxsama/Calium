@@ -40,7 +40,6 @@ export async function GET(req: NextRequest) {
 
   try {
     const upstream = await aniziumAssetFetch(rawUrl, {
-      revalidate: 86400,
       headers: req.headers.get("range") ? { range: req.headers.get("range")! } : undefined,
     });
 

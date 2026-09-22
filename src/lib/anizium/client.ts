@@ -171,11 +171,7 @@ export async function aniziumAssetFetch(
     const res = await fetch(assetUrl, {
       headers,
       signal: combinedSignal,
-      next:
-        typeof opts.revalidate === "number"
-          ? { revalidate: opts.revalidate }
-          : undefined,
-      cache: opts.revalidate === 0 ? "no-store" : undefined,
+      cache: "no-store",
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res;
@@ -204,11 +200,7 @@ async function aniziumAssetFetchViaWorker(
     const res = await fetch(url, {
       headers: proxyHeaders,
       signal: combinedSignal,
-      next:
-        typeof opts.revalidate === "number"
-          ? { revalidate: opts.revalidate }
-          : undefined,
-      cache: opts.revalidate === 0 ? "no-store" : undefined,
+      cache: "no-store",
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res;

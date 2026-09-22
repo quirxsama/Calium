@@ -83,8 +83,12 @@ export default async function DownloadPage() {
                 </a>
 
                 <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-[var(--muted-foreground)]">
-                  <span>Boyut: <strong className="text-[var(--foreground)]">{formatBytes(latestRelease.fileSize)}</strong></span>
-                  <span>•</span>
+                  {latestRelease.fileSize > 0 && (
+                    <>
+                      <span>Boyut: <strong className="text-[var(--foreground)]">{formatBytes(latestRelease.fileSize)}</strong></span>
+                      <span>•</span>
+                    </>
+                  )}
                   <span>Güncelleme: <strong className="text-[var(--foreground)]">{formatDate(latestRelease.createdAt)}</strong></span>
                   <span>•</span>
                   <span>İndirilme: <strong className="text-[var(--foreground)]">{latestRelease.downloadCount} kez</strong></span>

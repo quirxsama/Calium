@@ -20,22 +20,27 @@ export async function GET(req: NextRequest) {
     return new NextResponse("APK bulunamadı.", { status: 404 });
   }
 
+  // İndirme sayacını arka planda artır
+  prisma.appRelease
+    .update({
+      where: { id: release.id },
+      data: { downloadCount: { increment: 1 } },
+    })
+    .catch((err) => {
+      console.error("[apk/download] counter increment error:", err);
+    });
+
+  // Harici link ise doğrudan yönlendir
+  if (release.filePath.startsWith("http://") || release.filePath.startsWith("https://")) {
+    return NextResponse.redirect(release.filePath, { status: 302 });
+  }
+
   const safeFileName = path.basename(release.fileName);
   const fullPath = path.join(APK_DIR, safeFileName);
 
   try {
     const fileStat = await fs.stat(fullPath);
     const blob = await openAsBlob(fullPath);
-
-    // İndirme sayacını arka planda artır
-    prisma.appRelease
-      .update({
-        where: { id: release.id },
-        data: { downloadCount: { increment: 1 } },
-      })
-      .catch((err) => {
-        console.error("[apk/download] counter increment error:", err);
-      });
 
     return new Response(blob.stream(), {
       headers: {
