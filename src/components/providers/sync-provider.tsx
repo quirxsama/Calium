@@ -125,7 +125,9 @@ async function flushHistory() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ history: local }),
     });
-    removePendingHistoryUpserts(local.map((entry) => entry.animeId));
+    const pending = readPendingHistoryUpserts();
+    removePendingHistoryUpserts(local.filter((sent) => pending.some((entry) => entry.animeId === sent.animeId && entry.updatedAt === sent.updatedAt)).map((entry) => entry.animeId));
+    window.dispatchEvent(new CustomEvent("calium:library-changed"));
   }
 }
 
@@ -137,7 +139,9 @@ async function pullHistory(applyingRemoteRef: MutableRefObject<boolean>) {
     const history = data.history.filter((entry: { animeId?: unknown }) => {
       return typeof entry.animeId === "string" && !deletedIds.has(entry.animeId);
     });
-    writeRemoteState(HISTORY_KEY, HISTORY_EVENT, history, applyingRemoteRef);
+    const pending = readPendingHistoryUpserts();
+    const pendingIds = new Set(pending.map((entry) => entry.animeId));
+    writeRemoteState(HISTORY_KEY, HISTORY_EVENT, [...pending, ...history.filter((entry: { animeId: string }) => !pendingIds.has(entry.animeId))].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100), applyingRemoteRef);
   }
 }
 

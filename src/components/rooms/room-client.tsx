@@ -17,7 +17,7 @@ import { cn, parseTimeCode } from "@/lib/utils";
 import type { SourceGroup, SubtitleData, SourceContent, EpisodeData } from "@/lib/anizium/schemas";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { FillerBadge } from "@/components/anime/filler-badge";
-import { upsertHistory } from "@/lib/storage/history";
+import { upsertHistory, isEpisodeFinished, episodeProgress } from "@/lib/storage/history";
 import type { IntroSongData } from "@/components/player/intro-song-badge";
 
 type Member = {
@@ -102,6 +102,8 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
   const [roomAlert, setRoomAlert] = useState<AlertState>({ open: false, title: "" });
   const lastHistorySaveRef = useRef(0);
   const seasonNumRef = useRef(1);
+  const historyEpisodesRef = useRef<{ episodeId: string; seasons: { episodes: { ID: string }[] }[] } | null>(null);
+  const finishedEpisodeRef = useRef<string | null>(null);
 
   const showRoomAlert = useCallback((title: string, description?: string) => {
     setRoomAlert({ open: true, title, description });
@@ -130,31 +132,31 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
     } catch {}
   }
 
-  const onTimeUpdate = useCallback((current: number, duration: number) => {
-    if (duration <= 0) return;
+  const onTimeUpdate = useCallback((current: number, duration: number, forceFinished = false) => {
+    if (duration <= 0 || historyEpisodesRef.current?.episodeId !== room.episodeId) return;
     const now = Date.now();
-    if (now - lastHistorySaveRef.current < 4000) return;
+    const finished = forceFinished || isEpisodeFinished(current, duration);
+    if (!forceFinished && now - lastHistorySaveRef.current < 4000 && (!finished || finishedEpisodeRef.current === room.episodeId)) return;
     lastHistorySaveRef.current = now;
-
+    const counts = episodeProgress(historyEpisodesRef.current.seasons, room.episodeId, finished);
+    if (!counts) return;
     const ep = seasonEpisodes.find((e) => e.ID === room.episodeId);
-    if (!ep) return;
+    if (!ep && room.episodeId !== "film") return;
+    finishedEpisodeRef.current = finished ? room.episodeId : null;
 
     upsertHistory({
       animeId: room.animeId,
       animeName: room.animeName,
       poster: room.poster,
       episodeId: room.episodeId,
-      episodeName: room.episodeName ?? ep.name,
-      episodeNumber:
-        typeof ep.number === "number"
-          ? ep.number
-          : ep.number
-          ? Number(ep.number)
-          : null,
+      episodeName: room.episodeName ?? ep?.name ?? room.animeName,
+      episodeNumber: ep?.number != null ? Number(ep.number) : room.episodeId === "film" ? 1 : null,
       seasonNumber: seasonNumRef.current,
-      progress: current,
+      progress: finished ? duration : current,
       duration,
       updatedAt: now,
+      pendingNext: finished && counts.completedEpisodes === counts.totalEpisodes,
+      ...counts,
     });
   }, [room.animeId, room.animeName, room.poster, room.episodeId, room.episodeName, seasonEpisodes]);
 
@@ -278,6 +280,9 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
           });
           return;
         }
+        historyEpisodesRef.current = { episodeId: room.episodeId, seasons: det.data.seasons ?? [] };
+        lastHistorySaveRef.current = 0;
+        finishedEpisodeRef.current = null;
         let seasonNum = 1;
         let episodeNum = 1;
         let matched = false;
@@ -1166,6 +1171,7 @@ export function RoomClient({ initialRoom, isHost, currentUser }: Props) {
                   void changeEpisode(nextEpisode);
                 } : undefined}
                 onTimeUpdate={onTimeUpdate}
+                onEnded={() => onTimeUpdate(1000, 1000, true)}
                 overlayTopRight={overlayTopRight}
                 overlayPersistentTopRight={overlayPersistentTopRight}
                 overlayRightRail={overlayRightRail}

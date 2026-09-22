@@ -53,12 +53,12 @@ export function normalizeEntry(value) {
     poster: value.poster ?? null,
   };
 }
-export function mergeEntry(base, local, remote) {
+export function mergeEntry(base, local, remote, syncFields = fields) {
   if (base && (!local || !remote)) return { value: local, conflicts: ["deletion"], deletion: true };
   if (!local || !remote) return { value: local ?? remote, conflicts: [] };
   const value = { ...local };
   const conflicts = [];
-  for (const field of fields) {
+  for (const field of syncFields) {
     if (local[field] === remote[field]) continue;
     if (base && local[field] === base[field]) value[field] = remote[field];
     else if (!base || remote[field] !== base[field]) conflicts.push(field);

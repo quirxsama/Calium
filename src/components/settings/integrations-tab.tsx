@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Loader2, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
+
+import { queueIntegrationSync, loadIntegrations } from "@/lib/integration-client";
 
 interface Connection {
   provider: "mal" | "anilist";
@@ -26,6 +28,7 @@ interface Entry {
   title: string;
   version: number;
   value: Record<string, unknown>;
+  deleted: boolean;
 }
 
 export function IntegrationsTab() {
@@ -37,39 +40,37 @@ export function IntegrationsTab() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const resolvingRef = useRef(false);
+  const [resolving, setResolving] = useState(false);
+
   const loadData = useCallback(async () => {
-    try {
-      const res = await fetch("/api/integrations");
-      if (res.ok) {
-        const data = await res.json();
-        setConnections(data.connections || []);
-        setConflicts(data.conflicts || []);
-        setEntries(data.entries || []);
-      }
-    } catch {
-      // Ignored
-    } finally {
-      setLoading(false);
-    }
+    const data = await loadIntegrations();
+    setConnections(data.connections || []);
+    setConflicts(data.conflicts || []);
+    setEntries(data.entries || []);
   }, []);
 
   useEffect(() => {
     let active = true;
-    fetch("/api/integrations")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!active || !data) return;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const data = await loadIntegrations();
+        if (!active) return;
         setConnections(data.connections || []);
         setConflicts(data.conflicts || []);
         setEntries(data.entries || []);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+      } catch {
+        if (active) setMessage({ type: "error", text: "Entegrasyonlar yüklenemedi. Otomatik tekrar denenecek." });
+      } finally {
+        if (active) {
+          setLoading(false);
+          timer = setTimeout(poll, 5000);
+        }
+      }
+    }
+    void poll();
+    return () => { active = false; clearTimeout(timer); };
   }, []);
 
   async function handleLink(provider: "mal" | "anilist") {
@@ -114,7 +115,7 @@ export function IntegrationsTab() {
             linked = true;
             popup?.close();
             setMessage({ type: "success", text: `${provider.toUpperCase()} hesabı başarıyla bağlandı.` });
-            await fetch("/api/integrations/sync", { method: "POST" });
+            await queueIntegrationSync();
             await loadData();
             break;
           }
@@ -157,7 +158,7 @@ export function IntegrationsTab() {
     setSyncing(true);
     setMessage(null);
     try {
-      await fetch("/api/integrations/sync", { method: "POST" });
+      await queueIntegrationSync();
       await new Promise((r) => setTimeout(r, 1200));
       await loadData();
       setMessage({ type: "success", text: "Senkronizasyon kuyruğa alındı." });
@@ -169,7 +170,13 @@ export function IntegrationsTab() {
   }
 
   async function handleResolve(conflict: Conflict, choice: "local" | "remote") {
+    if (resolvingRef.current) return;
     const entry = entries.find((e) => e.id === conflict.entryId);
+    const deleting = choice === "remote" ? conflict.remote === null : (entry?.deleted ?? false);
+    if (deleting && !window.confirm("Bu seçim kaydı siler. Silmeyi onaylıyor musunuz?")) return;
+    resolvingRef.current = true;
+    setResolving(true);
+    setMessage(null);
     try {
       const res = await fetch("/api/tracking/conflicts/resolve", {
         method: "POST",
@@ -178,8 +185,9 @@ export function IntegrationsTab() {
           entryId: conflict.entryId,
           provider: conflict.provider,
           version: conflict.version,
-          entryVersion: entry?.version ?? 1,
+          entryVersion: entry?.version,
           choice,
+          confirmDeletion: deleting,
         }),
       });
       if (!res.ok) {
@@ -190,7 +198,19 @@ export function IntegrationsTab() {
       setMessage({ type: "success", text: "Çakışma başarıyla çözüldü." });
       await loadData();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Çözüm başarısız" });
+      const code = err instanceof Error ? err.message : "Çözüm başarısız";
+      setMessage({
+        type: "error",
+        text: code === "integration_busy"
+          ? "Senkronizasyon sürüyor. Lütfen birkaç saniye sonra tekrar deneyin."
+          : code === "version_conflict"
+          ? "Veri değişti. Güncel liste yüklendi, lütfen seçiminizi tekrar yapın."
+          : "Çakışma çözülemedi: " + code,
+      });
+      await loadData().catch(() => {});
+    } finally {
+      resolvingRef.current = false;
+      setResolving(false);
     }
   }
 
@@ -258,14 +278,16 @@ export function IntegrationsTab() {
                   </div>
                   <div className="flex gap-2">
                     <button
+                      disabled={resolving}
                       onClick={() => handleResolve(conflict, "local")}
-                      className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--muted)]"
+                      className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--muted)] disabled:opacity-50"
                     >
                       Calium Verisini Tut
                     </button>
                     <button
+                      disabled={resolving}
                       onClick={() => handleResolve(conflict, "remote")}
-                      className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90"
+                      className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
                     >
                       {conflict.provider.toUpperCase()} Verisini Al
                     </button>

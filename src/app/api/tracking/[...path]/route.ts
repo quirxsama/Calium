@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { enqueue } from "@/server/integrations/worker.mjs";
 import { normalizeEntry } from "@/server/integrations/core.mjs";
-import { reconcileHistoryToLibrary } from "@/server/integrations/reconcile.mjs";
+import { reconcileHistoryToLibrary } from "@/lib/tracking-history";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ path: s
   if (path.join("/") !== "entries") return fail("not_found", 404);
 
   try {
-    await reconcileHistoryToLibrary(user.id, prisma);
+    await reconcileHistoryToLibrary(user.id);
   } catch {}
 
   const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -30,15 +30,15 @@ export async function GET(req: NextRequest, context: { params: Promise<{ path: s
     const val = JSON.parse(item.value);
     if (val.status === "watching" && (!item.totalEpisodes || val.progress < item.totalEpisodes)) {
       val.status = "dropped";
-      await prisma.trackingEntry.update({
-        where: { id: item.id },
+      await prisma.trackingEntry.updateMany({
+        where: { id: item.id, version: item.version, deleted: false },
         data: { value: JSON.stringify(val), version: { increment: 1 } },
       });
       await enqueue(prisma, user.id);
     }
   }
 
-  const entries = await prisma.trackingEntry.findMany({ where: { userId: user.id, deleted: false, sourceId: { not: null } }, orderBy: { updatedAt: "desc" } });
+  const entries = await prisma.trackingEntry.findMany({ where: { userId: user.id, deleted: false }, orderBy: { updatedAt: "desc" } });
   return NextResponse.json({ entries: entries.map((entry) => ({ ...entry, value: JSON.parse(entry.value) })) }, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -55,17 +55,19 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ path:
   if ((data.malId !== undefined || data.anilistId !== undefined) && !data.confirmMapping) return fail("mapping_confirmation_required");
   try {
     const entry = await prisma.$transaction(async (db) => {
-      const existing = data.id ? await db.trackingEntry.findFirst({ where: { id: data.id, userId: user.id } }) : null;
+      const existing = await db.trackingEntry.findFirst({ where: { userId: user.id, ...(data.id ? { id: data.id } : data.sourceId ? { sourceId: data.sourceId } : { id: "" }) } });
       if (data.id && !existing) throw new Error("not_found");
-      if (existing && existing.version !== data.version) throw new Error("version_conflict");
+      if (existing && data.version !== undefined && existing.version !== data.version) throw new Error("version_conflict");
+      if (!existing && data.version !== undefined) throw new Error("version_conflict");
       if (existing && (data.malId !== undefined && data.malId !== existing.malId || data.anilistId !== undefined && data.anilistId !== existing.anilistId)) {
         const snapshots = await db.syncSnapshot.count({ where: { entryId: existing.id } });
         if (snapshots) throw new Error("mapping_in_use");
       }
       if (!existing && (!data.title || (!data.sourceId && !data.malId && !data.anilistId))) throw new Error("invalid_request");
-      const value = normalizeEntry({ ...(existing ? JSON.parse(existing.value) : {}), ...data.value, totalEpisodes: data.totalEpisodes ?? existing?.totalEpisodes });
-      const changes = { sourceId: data.sourceId, title: data.title, totalEpisodes: data.totalEpisodes, malId: data.malId, anilistId: data.anilistId, value: JSON.stringify(value), ...(data.confirmMapping ? { mapping: "confirmed" } : {}) };
-      if (existing) return db.trackingEntry.update({ where: { id: existing.id, version: data.version }, data: { ...changes, version: { increment: 1 } } });
+      const existingVal = existing ? JSON.parse(existing.value) : {};
+      const value = normalizeEntry({ ...existingVal, ...data.value, totalEpisodes: data.totalEpisodes ?? existing?.totalEpisodes });
+      const changes = { sourceId: data.sourceId ?? existing?.sourceId, title: data.title ?? existing?.title, totalEpisodes: data.totalEpisodes ?? existing?.totalEpisodes, malId: data.malId ?? existing?.malId, anilistId: data.anilistId ?? existing?.anilistId, value: JSON.stringify(value), ...(data.confirmMapping ? { mapping: "confirmed" } : {}) };
+      if (existing) return db.trackingEntry.update({ where: { id: existing.id }, data: { ...changes, deleted: false, version: { increment: 1 } } });
       return db.trackingEntry.create({ data: { userId: user.id, ...changes, title: data.title! } });
     });
     await enqueue(prisma, user.id);
@@ -83,10 +85,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ path: 
   let body: unknown;
   try { body = await req.json(); } catch { return fail("invalid_request"); }
   if (path.join("/") === "progress") {
-    const parsed = z.object({ entryId: z.string().max(100), version: z.number().int().positive().optional(), completedEpisodes: z.number().int().min(0).max(100000) }).strict().safeParse(body);
+    const parsed = z.object({ entryId: z.string().max(100), version: z.number().int().positive().optional(), completedEpisodes: z.number().int().min(0).max(100000) }).safeParse(body);
     if (!parsed.success) return fail("invalid_request");
     const entry = await prisma.trackingEntry.findFirst({ where: { id: parsed.data.entryId, userId: user.id, deleted: false } });
     if (!entry) return fail("not_found", 404);
+    if (parsed.data.version !== undefined && entry.version !== parsed.data.version) return fail("version_conflict", 409);
     const value = JSON.parse(entry.value);
     value.progress = parsed.data.completedEpisodes;
     if (entry.totalEpisodes && value.progress >= entry.totalEpisodes) {
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ path: 
       value.status = "watching";
     }
     const changed = await prisma.trackingEntry.updateMany({
-      where: { id: entry.id, ...(parsed.data.version ? { version: parsed.data.version } : {}) },
+      where: { id: entry.id, userId: user.id, deleted: false, ...(parsed.data.version !== undefined ? { version: parsed.data.version } : {}) },
       data: { value: JSON.stringify(value), version: { increment: 1 } },
     });
     if (!changed.count) return fail("version_conflict", 409);
@@ -113,19 +116,24 @@ export async function POST(req: NextRequest, context: { params: Promise<{ path: 
         const entry = await db.trackingEntry.findFirst({ where: { id: data.entryId, userId: user.id } });
         const integration = await db.integration.findUnique({ where: { userId_provider: { userId: user.id, provider: data.provider } } });
         if (!entry || !integration) throw new Error("not_found");
-        if (integration.leaseUntil && integration.leaseUntil > new Date()) throw new Error("integration_busy");
         const where = { integrationId_entryId: { integrationId: integration.id, entryId: entry.id } };
         const snapshot = await db.syncSnapshot.findUnique({ where });
-        if (!snapshot || !snapshot.conflict) return;
+        if (!snapshot?.conflict) return;
+        if (data.version !== undefined && snapshot.version !== data.version) throw new Error("version_conflict");
+        if (data.entryVersion !== undefined && entry.version !== data.entryVersion) throw new Error("version_conflict");
         const chosen = data.choice === "remote" ? snapshot.remote : entry.deleted ? null : entry.value;
-        await db.trackingEntry.update({ where: { id: entry.id }, data: { ...(chosen ? { value: chosen } : {}), deleted: !chosen, version: { increment: 1 } } });
-        await db.syncSnapshot.update({ where, data: { base: snapshot.remote, conflict: null, version: { increment: 1 } } });
+        if (!chosen && !data.confirmDeletion) throw new Error("deletion_confirmation_required");
+        const value = chosen && data.choice === "remote" ? JSON.stringify({ ...JSON.parse(entry.value), ...JSON.parse(chosen), poster: JSON.parse(entry.value).poster ?? JSON.parse(chosen).poster ?? null }) : chosen;
+        const changed = await db.trackingEntry.updateMany({ where: { id: entry.id, userId: user.id, ...(data.entryVersion !== undefined ? { version: data.entryVersion } : {}) }, data: { ...(value ? { value } : {}), deleted: !chosen, version: { increment: 1 } } });
+        if (!changed.count) throw new Error("version_conflict");
+        const resolved = await db.syncSnapshot.updateMany({ where: { integrationId: integration.id, entryId: entry.id, ...(data.version !== undefined ? { version: data.version } : {}) }, data: { base: snapshot.remote, conflict: null, version: { increment: 1 } } });
+        if (!resolved.count) throw new Error("version_conflict");
       });
       await enqueue(prisma, user.id);
       return NextResponse.json({ resolved: true });
     } catch (error) {
       const code = error instanceof Error ? error.message : "resolve_failed";
-      return fail(["not_found", "integration_busy", "version_conflict"].includes(code) ? code : "resolve_failed", 409);
+      return fail(["not_found", "version_conflict", "deletion_confirmation_required"].includes(code) ? code : "resolve_failed", 409);
     }
   }
   return fail("not_found", 404);
@@ -139,7 +147,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ path
 
   let body: unknown;
   try { body = await req.json(); } catch { return fail("invalid_request"); }
-  const parsed = z.object({ id: z.string().min(1).max(100) }).safeParse(body);
+  const parsed = z.object({ id: z.string().min(1).max(100), version: z.number().int().positive().optional() }).safeParse(body);
   if (!parsed.success) return fail("invalid_request");
 
   const entry = await prisma.trackingEntry.findFirst({
@@ -147,10 +155,11 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ path
   });
   if (!entry) return fail("not_found", 404);
 
-  await prisma.trackingEntry.update({
-    where: { id: entry.id },
+  const changed = await prisma.trackingEntry.updateMany({
+    where: { id: entry.id, userId: user.id, ...(parsed.data.version ? { version: parsed.data.version } : {}) },
     data: { deleted: true, version: { increment: 1 } },
   });
+  if (!changed.count) return fail("version_conflict", 409);
   await enqueue(prisma, user.id);
   return NextResponse.json({ success: true });
 }

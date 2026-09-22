@@ -206,6 +206,9 @@ model HistoryItem {
   seasonNumber  Int?
   progress      Float    @default(0)
   duration      Float    @default(0)
+  completedEpisodes Int?
+  totalEpisodes Int?
+  pendingNext Boolean @default(false)
   updatedAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

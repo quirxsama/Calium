@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
@@ -17,6 +17,7 @@ import {
   Compass,
   Loader2,
 } from "lucide-react";
+import { queueIntegrationSync, loadIntegrations } from "@/lib/integration-client";
 import { AniziumImage } from "@/components/anime/anizium-image";
 
 interface TrackingValue {
@@ -65,6 +66,9 @@ export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [query, setQuery] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const mutationRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -74,11 +78,12 @@ export default function LibraryPage() {
     let active = true;
     if (user) {
       fetch("/api/tracking/entries")
-        .then((res) => (res.ok ? res.json() : null))
+        .then((res) => { if (!res.ok) throw new Error("Kütüphane yüklenemedi."); return res.json(); })
         .then((data) => {
           if (!active || !data) return;
           setItems(data.entries || []);
         })
+        .catch(() => { if (active) setError("Kütüphane yüklenemedi. Eşitle ile tekrar deneyin."); })
         .finally(() => {
           if (active) setLoading(false);
         });
@@ -89,118 +94,76 @@ export default function LibraryPage() {
   }, [user, authLoading, router]);
 
   async function handleSync() {
+    if (mutationRef.current) return;
+    mutationRef.current = true;
     setSyncing(true);
+    setError(null);
     try {
-      await fetch("/api/integrations/sync", { method: "POST" });
-      await new Promise((r) => setTimeout(r, 1200));
-      const res = await fetch("/api/tracking/entries");
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.entries || []);
+      await queueIntegrationSync();
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const state = await loadIntegrations();
+        const res = await fetch("/api/tracking/entries", { cache: "no-store" });
+        if (!res.ok) throw new Error("Kütüphane yüklenemedi.");
+        setItems((await res.json()).entries || []);
+        const connections = state.connections as { connected: boolean; error: string | null; leaseUntil?: string; nextRunAt?: string }[];
+        const failed = connections.find((connection) => connection.connected && connection.error);
+        if (failed) throw new Error(failed.error!);
+        if (!connections.some((connection) => connection.connected && ((connection.leaseUntil && Date.parse(connection.leaseUntil) > Date.now()) || (connection.nextRunAt && Date.parse(connection.nextRunAt) <= Date.now())))) return;
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
-    } catch {} finally {
+      setError("Senkronizasyon arka planda sürüyor. Listeyi yenilemek için tekrar Eşitle'ye basın.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Senkronizasyon başarısız.");
+    } finally {
+      mutationRef.current = false;
       setSyncing(false);
     }
   }
 
-  async function decrementEpisode(e: React.MouseEvent, item: TrackingItem) {
+  async function mutate(item: TrackingItem, path: string, method: string, body: Record<string, unknown>) {
+    if (mutationRef.current) return;
+    mutationRef.current = true;
+    setBusy(true);
+    setMenuOpenId(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/tracking/${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, version: item.version }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "İşlem başarısız.");
+      setItems((prev) => method === "DELETE" ? prev.filter((i) => i.id !== item.id) : prev.map((i) => i.id === item.id ? data.entry : i));
+      window.dispatchEvent(new CustomEvent("calium:library-changed"));
+    } catch (err) {
+      setError(`${err instanceof Error ? err.message : "İşlem başarısız."} Listeyi kontrol edip tekrar deneyin.`);
+      try {
+        const res = await fetch("/api/tracking/entries", { cache: "no-store" });
+        if (res.ok) setItems((await res.json()).entries || []);
+      } catch {}
+    } finally {
+      mutationRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  function decrementEpisode(e: React.MouseEvent, item: TrackingItem) {
     e.preventDefault();
     e.stopPropagation();
-    const current = item.value.progress ?? 0;
-    if (current <= 0) return;
-
-    const prev = current - 1;
-    const total = item.totalEpisodes ?? 0;
-    setItems((old) =>
-      old.map((i) =>
-        i.id === item.id
-          ? {
-              ...i,
-              value: {
-                ...i.value,
-                progress: prev,
-                status: total > 0 && prev < total && i.value.status === "completed" ? "watching" : i.value.status,
-              },
-            }
-          : i
-      )
-    );
-
-    try {
-      await fetch("/api/tracking/progress", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entryId: item.id,
-          completedEpisodes: prev,
-        }),
-      });
-    } catch {}
+    if (item.value.progress <= 0) return;
+    void mutate(item, "progress", "POST", { entryId: item.id, completedEpisodes: item.value.progress - 1 });
   }
 
-  async function incrementEpisode(e: React.MouseEvent, item: TrackingItem) {
+  function incrementEpisode(e: React.MouseEvent, item: TrackingItem) {
     e.preventDefault();
     e.stopPropagation();
-    const current = item.value.progress ?? 0;
-    const total = item.totalEpisodes ?? 0;
-    if (total > 0 && current >= total) return;
-
-    const next = current + 1;
-    setItems((prevItems) =>
-      prevItems.map((i) =>
-        i.id === item.id
-          ? {
-              ...i,
-              value: {
-                ...i.value,
-                progress: next,
-                status: total > 0 && next >= total ? "completed" : i.value.status === "plan_to_watch" ? "watching" : i.value.status,
-              },
-            }
-          : i
-      )
-    );
-
-    try {
-      await fetch("/api/tracking/progress", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entryId: item.id,
-          completedEpisodes: next,
-        }),
-      });
-    } catch {}
+    if (item.totalEpisodes && item.value.progress >= item.totalEpisodes) return;
+    void mutate(item, "progress", "POST", { entryId: item.id, completedEpisodes: item.value.progress + 1 });
   }
 
-  async function changeStatus(item: TrackingItem, status: TrackingValue["status"]) {
-    setMenuOpenId(null);
-    setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, value: { ...i.value, status } } : i))
-    );
-    try {
-      await fetch("/api/tracking/entries", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: item.id,
-          version: item.version,
-          value: { status },
-        }),
-      });
-    } catch {}
+  function changeStatus(item: TrackingItem, status: TrackingValue["status"]) {
+    void mutate(item, "entries", "PATCH", { id: item.id, value: { status } });
   }
 
-  async function removeItem(item: TrackingItem) {
-    setMenuOpenId(null);
-    setItems((prev) => prev.filter((i) => i.id !== item.id));
-    try {
-      await fetch("/api/tracking/entries", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id }),
-      });
-    } catch {}
+  function removeItem(item: TrackingItem) {
+    void mutate(item, "entries", "DELETE", { id: item.id });
   }
 
   const counts = useMemo(() => {
@@ -251,6 +214,7 @@ export default function LibraryPage() {
         </button>
       </div>
 
+      {error && <p role="alert" className="mb-4 text-sm text-red-400">{error}</p>}
       {/* Tabs & Search */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-1 overflow-x-auto pb-1 no-scrollbar">
@@ -360,7 +324,7 @@ export default function LibraryPage() {
                   {/* Play Overlay */}
                   <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                     <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3 py-1 text-[11px] font-semibold text-[var(--primary-foreground)] shadow-lg shadow-[var(--primary)]/30">
-                      <Play className="h-3 w-3 fill-current" /> İzle
+                      <Play className="h-3 w-3 fill-current" /> {item.sourceId ? "İzle" : "Katalogda Ara"}
                     </div>
                   </div>
 
@@ -394,7 +358,7 @@ export default function LibraryPage() {
                       {/* -1 Episode Quick Decrement */}
                       <button
                         onClick={(e) => decrementEpisode(e, item)}
-                        disabled={progress <= 0}
+                        disabled={busy || syncing || progress <= 0}
                         title="-1 Bölüm"
                         className="flex h-6 w-6 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)] text-[var(--foreground)] transition hover:bg-[var(--primary)] hover:text-white disabled:opacity-30"
                       >
@@ -404,7 +368,7 @@ export default function LibraryPage() {
                       {/* +1 Episode Quick Increment */}
                       <button
                         onClick={(e) => incrementEpisode(e, item)}
-                        disabled={total > 0 && progress >= total}
+                        disabled={busy || syncing || (total > 0 && progress >= total)}
                         title="+1 Bölüm"
                         className="flex h-6 w-6 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)] text-[var(--foreground)] transition hover:bg-[var(--primary)] hover:text-white disabled:opacity-30"
                       >
@@ -432,6 +396,7 @@ export default function LibraryPage() {
                           {(Object.keys(STATUS_LABELS) as TrackingValue["status"][]).map((st) => (
                             <button
                               key={st}
+                              disabled={busy || syncing}
                               onClick={() => changeStatus(item, st)}
                               className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-medium transition ${
                                 val.status === st
@@ -445,6 +410,7 @@ export default function LibraryPage() {
                           ))}
                           <div className="my-1 h-px bg-[var(--border)]" />
                           <button
+                            disabled={busy || syncing}
                             onClick={() => removeItem(item)}
                             className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium text-rose-400 hover:bg-rose-500/10 transition"
                           >

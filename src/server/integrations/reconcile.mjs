@@ -13,12 +13,16 @@ export async function reconcileHistoryToLibrary(userId, db) {
       where: { userId, sourceId: item.animeId },
     });
 
+    if (existing?.deleted || (existing && existing.updatedAt >= item.updatedAt)) continue;
+
     const isFinished = item.duration > 0 && item.progress >= item.duration * 0.85;
     const isRecent = (now - item.updatedAt.getTime()) <= oneMonthMs;
-    const progress = item.episodeNumber && item.episodeNumber > 0 ? item.episodeNumber : 1;
+    const episode = Number.isInteger(item.episodeNumber) && item.episodeNumber > 0 ? item.episodeNumber : null;
+    const progress = episode ? episode - (isFinished ? 0 : 1) : 0;
+    if (!existing && !progress && item.progress <= 0) continue;
 
     let targetStatus = "watching";
-    if ((isFinished && existing?.totalEpisodes && progress >= existing.totalEpisodes) || item.pendingNext) {
+    if (existing?.totalEpisodes > 0 && progress >= existing.totalEpisodes) {
       targetStatus = "completed";
     } else if (isRecent) {
       targetStatus = "watching";
@@ -28,7 +32,8 @@ export async function reconcileHistoryToLibrary(userId, db) {
 
     if (existing) {
       const val = JSON.parse(existing.value);
-      const finalStatus = val.status === "completed" ? "completed" : targetStatus;
+      const isManualUnstarted = (val.status === "plan_to_watch" || val.status === "on_hold" || val.status === "dropped") && progress === 0;
+      const finalStatus = val.status === "completed" || isManualUnstarted || item.progress <= 0 ? val.status : targetStatus;
       const finalProgress = Math.max(val.progress ?? 0, progress);
       const newVal = {
         ...val,
@@ -37,8 +42,8 @@ export async function reconcileHistoryToLibrary(userId, db) {
         poster: item.poster || val.poster || null,
       };
       if (JSON.stringify(newVal) !== existing.value) {
-        await db.trackingEntry.update({
-          where: { id: existing.id },
+        await db.trackingEntry.updateMany({
+          where: { id: existing.id, version: existing.version, deleted: false },
           data: {
             title: item.animeName,
             value: JSON.stringify(newVal),

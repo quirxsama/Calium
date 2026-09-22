@@ -97,6 +97,34 @@ export function LibraryStatusButton({ animeId, animeName, poster, totalEpisodes 
         const data = await res.json();
         setEntry({ id: data.entry.id, version: data.entry.version, status });
         window.dispatchEvent(new CustomEvent("calium:library-changed"));
+      } else if (res.status === 409) {
+        const refresh = await fetch("/api/tracking/entries");
+        if (refresh.ok) {
+          const freshData = await refresh.json();
+          const match = Array.isArray(freshData.entries)
+            ? freshData.entries.find((e: { sourceId?: string; title?: string }) => (e.sourceId && e.sourceId === animeId) || (e.title && e.title.toLowerCase() === animeName.toLowerCase()))
+            : null;
+          if (match) {
+            const retryRes = await fetch("/api/tracking/entries", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: match.id,
+                version: match.version,
+                sourceId: animeId,
+                title: animeName,
+                totalEpisodes: totalEpisodes ?? null,
+                confirmMapping: true,
+                value: { status, poster: poster ?? undefined },
+              }),
+            });
+            if (retryRes.ok) {
+              const retryData = await retryRes.json();
+              setEntry({ id: retryData.entry.id, version: retryData.entry.version, status });
+              window.dispatchEvent(new CustomEvent("calium:library-changed"));
+            }
+          }
+        }
       }
     } catch {} finally {
       setLoading(false);
@@ -111,7 +139,7 @@ export function LibraryStatusButton({ animeId, animeName, poster, totalEpisodes 
       const res = await fetch("/api/tracking/entries", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: entry.id }),
+        body: JSON.stringify({ id: entry.id, version: entry.version }),
       });
       if (res.ok) {
         setEntry(null);

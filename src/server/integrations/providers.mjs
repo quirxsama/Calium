@@ -88,7 +88,6 @@ export async function readList(provider, token, userId, pace = async () => {}) {
 }
 export async function writeEntry(provider, token, entry, value) {
   if (provider === "mal") {
-    if (value.startedAt || value.completedAt) throw new ProviderError("mal_dates_write_unsupported");
     const body = new URLSearchParams({ status: value.status, score: String(Math.round(value.score / 10)), num_watched_episodes: String(value.progress), num_times_rewatched: String(value.repeat), is_rewatching: String(value.rewatching) });
     const result = await request(`https://api.myanimelist.net/v2/anime/${entry.malId}/my_list_status`, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded" }, body });
     return normalizeEntry({ ...value, score: result.score * 10, status: result.status, progress: result.num_episodes_watched, repeat: result.num_times_rewatched ?? value.repeat, rewatching: result.is_rewatching });

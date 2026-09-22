@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { configuration, mergeEntry, seal, unseal } from "./core.mjs";
+import { configuration, fields, mergeEntry, seal, unseal } from "./core.mjs";
 import { readList, writeEntry, tokens, bridge, searchProvider, ProviderError } from "./providers.mjs";
 
 const interval = 15 * 60 * 1000;
@@ -37,21 +37,28 @@ export async function runOne(db, now = new Date()) {
       if (!saved.count) throw new ProviderError("lease_lost");
     }
     const remoteEntries = await readList(candidate.provider, credentials.access_token, candidate.providerUserId, pace);
+    const syncFields = candidate.provider === "mal" ? fields.filter((field) => field !== "startedAt" && field !== "completedAt") : fields;
+    const same = (left, right) => left && right && syncFields.every((field) => left[field] === right[field]);
     const remoteById = new Map(remoteEntries.map((entry) => [candidate.provider === "mal" ? entry.malId : entry.anilistId, entry]));
     for (const remote of remoteEntries) {
       await heartbeat();
-      const entry = await db.trackingEntry.findFirst({
+      let entry = await db.trackingEntry.findFirst({
         where: {
           userId: candidate.userId,
-          sourceId: { not: null },
-          deleted: false,
           OR: [
             ...(remote.malId ? [{ malId: remote.malId }] : []),
             ...(remote.anilistId ? [{ anilistId: remote.anilistId }] : []),
-            { title: { equals: remote.title } },
+
           ],
         },
       });
+      if (!entry) {
+        const matches = await db.trackingEntry.findMany({ where: { userId: candidate.userId, deleted: false, title: remote.title, ...(remote.malId ? { malId: null } : {}), ...(remote.anilistId ? { anilistId: null } : {}) } });
+        if (matches.length === 1) entry = matches[0];
+      }
+      if (!entry) {
+        entry = await db.trackingEntry.create({ data: { userId: candidate.userId, malId: remote.malId, anilistId: remote.anilistId, title: remote.title, totalEpisodes: remote.totalEpisodes, value: json(remote.value) } });
+      }
       if (entry) {
         const data = {};
         if (remote.anilistId && !entry.anilistId) data.anilistId = remote.anilistId;
@@ -61,16 +68,9 @@ export async function runOne(db, now = new Date()) {
           if (data.anilistId) entry.anilistId = data.anilistId;
           if (data.malId) entry.malId = data.malId;
         }
-        const where = { integrationId_entryId: { integrationId: candidate.id, entryId: entry.id } };
-        const snapshot = await db.syncSnapshot.findUnique({ where });
-        if (!snapshot) {
-          await db.syncSnapshot.create({
-            data: { integrationId: candidate.id, entryId: entry.id, base: json(remote.value), remote: json(remote.value), version: entry.version },
-          });
-        }
       }
     }
-    const entries = await db.trackingEntry.findMany({ where: { userId: candidate.userId, sourceId: { not: null } } });
+    const entries = await db.trackingEntry.findMany({ where: { userId: candidate.userId } });
     for (let entry of entries) {
       await heartbeat();
       if (candidate.provider === "anilist" && !entry.anilistId) {
@@ -101,7 +101,9 @@ export async function runOne(db, now = new Date()) {
         continue;
       }
       const local = entry.deleted ? null : parse(entry.value);
-      const result = mergeEntry(parse(snapshot?.base), local, remote);
+      const result = entry.deleted && remote
+        ? { value: null, conflicts: ["deletion"] }
+        : mergeEntry(parse(snapshot?.base), local, remote, syncFields);
       if (result.conflicts.length) {
         const data = { remote: json(remote), conflict: json(result.conflicts), version: (snapshot?.version ?? 0) + 1 };
         await db.syncSnapshot.upsert({ where, create: { integrationId: candidate.id, entryId: entry.id, ...data }, update: data });
@@ -116,7 +118,7 @@ export async function runOne(db, now = new Date()) {
         entry = { ...entry, value: json(merged), version: entry.version + 1 };
         await enqueue(db, candidate.userId);
       }
-      if (json(merged) !== json(remote)) {
+      if (!same(merged, remote)) {
         await pace();
         const current = await db.trackingEntry.findUnique({ where: { id: entry.id } });
         if (!current || current.version !== entry.version) continue;

@@ -10,13 +10,22 @@ export type HistoryEntry = {
   duration: number; // seconds
   updatedAt: number;
   pendingNext?: boolean; // true when user finished the last available episode
+  completedEpisodes?: number | null;
+  totalEpisodes?: number | null;
 };
 
 export const FINISHED_EPISODE_REMAINING_SECONDS = 180;
 
 export function isEpisodeFinished(progress: number, duration: number): boolean {
-  if (duration <= 0) return false;
-  return duration - progress <= FINISHED_EPISODE_REMAINING_SECONDS;
+  if (!Number.isFinite(duration) || !Number.isFinite(progress) || duration <= 0 || progress <= 0) return false;
+  return duration - progress <= Math.min(FINISHED_EPISODE_REMAINING_SECONDS, duration * 0.15);
+}
+
+export function episodeProgress(seasons: { episodes: { ID: string }[] }[], episodeId: string, finished: boolean) {
+  if (episodeId === "film") return { completedEpisodes: finished ? 1 : 0, totalEpisodes: 1 };
+  const episodes = seasons.flatMap((season) => season.episodes);
+  const index = episodes.findIndex((episode) => episode.ID === episodeId);
+  return index < 0 ? null : { completedEpisodes: index + (finished ? 1 : 0), totalEpisodes: episodes.length };
 }
 
 const KEY = "animes:history";

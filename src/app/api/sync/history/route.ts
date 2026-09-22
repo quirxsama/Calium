@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth/require-user";
-import { reconcileHistoryToLibrary } from "@/server/integrations/reconcile.mjs";
+import { reconcileHistoryToLibrary } from "@/lib/tracking-history";
 import { enqueue } from "@/server/integrations/worker.mjs";
 
 const HistoryItemSchema = z.object({
@@ -15,7 +15,10 @@ const HistoryItemSchema = z.object({
   seasonNumber: z.number().nullable().optional(),
   progress: z.number().nonnegative().max(100_000),
   duration: z.number().nonnegative().max(100_000),
-  updatedAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative().max(8640000000000000),
+  completedEpisodes: z.number().int().min(0).max(100000).nullable().optional(),
+  totalEpisodes: z.number().int().positive().max(100000).nullable().optional(),
+  pendingNext: z.boolean().optional(),
 });
 
 const HistoryBodySchema = z.object({
@@ -45,6 +48,9 @@ export async function GET() {
       seasonNumber: true,
       progress: true,
       duration: true,
+      completedEpisodes: true,
+      totalEpisodes: true,
+      pendingNext: true,
       updatedAt: true,
     },
   });
@@ -61,6 +67,9 @@ export async function GET() {
       seasonNumber: h.seasonNumber,
       progress: h.progress,
       duration: h.duration,
+      completedEpisodes: h.completedEpisodes,
+      totalEpisodes: h.totalEpisodes,
+      pendingNext: h.pendingNext,
       updatedAt: h.updatedAt.getTime(),
     })),
   });
@@ -88,25 +97,11 @@ export async function POST(req: NextRequest) {
   const items = parsed.data.history;
   if (items.length === 0) return NextResponse.json({ success: true });
 
-  // Mevcut kayıtları tek sorguyla çek (N+1 yerine 1).
-  const animeIds = items.map((i) => i.animeId);
-  const existing = await prisma.historyItem.findMany({
-    where: { userId: user!.id, animeId: { in: animeIds } },
-    select: { animeId: true, updatedAt: true },
-  });
-  const existingMap = new Map(existing.map((e) => [e.animeId, e.updatedAt]));
-
-  // Sadece client'ta daha yeni olanları upsert'le.
-  const toWrite = items.filter((item) => {
-    const existingAt = existingMap.get(item.animeId);
-    return !existingAt || existingAt < new Date(item.updatedAt);
-  });
-
-  if (toWrite.length === 0) return NextResponse.json({ success: true });
-
-  await prisma.$transaction(
-    toWrite.map((item) => {
-      const incomingDate = new Date(item.updatedAt);
+  await prisma.$transaction(async (db) => {
+    for (const item of items) {
+      const incomingDate = new Date(Math.min(item.updatedAt, Date.now()));
+      const existing = await db.historyItem.findUnique({ where: { userId_animeId: { userId: user!.id, animeId: item.animeId } } });
+      if (existing && existing.updatedAt >= incomingDate) continue;
       const data = {
         animeName: item.animeName,
         poster: item.poster ?? null,
@@ -116,18 +111,21 @@ export async function POST(req: NextRequest) {
         seasonNumber: item.seasonNumber ?? null,
         progress: item.progress,
         duration: item.duration,
+        completedEpisodes: item.completedEpisodes ?? null,
+        totalEpisodes: item.totalEpisodes ?? null,
+        pendingNext: item.pendingNext ?? false,
         updatedAt: incomingDate,
       };
-      return prisma.historyItem.upsert({
+      await db.historyItem.upsert({
         where: { userId_animeId: { userId: user!.id, animeId: item.animeId } },
         update: data,
         create: { userId: user!.id, animeId: item.animeId, ...data },
       });
-    })
-  );
+    }
+  });
 
   try {
-    await reconcileHistoryToLibrary(user!.id, prisma);
+    await reconcileHistoryToLibrary(user!.id);
     await enqueue(prisma, user!.id);
   } catch {}
 

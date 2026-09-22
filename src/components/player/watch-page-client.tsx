@@ -11,12 +11,11 @@ import type {
   SubtitleData,
 } from "@/lib/anizium/schemas";
 import type { UpcomingEpisodePlaceholder } from "@/lib/anizium/calendar";
-import { upsertHistory, getHistoryEntry, isEpisodeFinished } from "@/lib/storage/history";
+import { upsertHistory, getHistoryEntry, isEpisodeFinished, episodeProgress } from "@/lib/storage/history";
 import { usePublishActivity } from "@/lib/realtime/presence";
 import { ArrowLeft, SkipForward, SkipBack } from "lucide-react";
 import { formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
-import { YouTubeEpisodeRail } from "./youtube-episode-rail";
 import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
 import { DownloadButton } from "@/components/player/download-button";
 import { FillerBadge } from "@/components/anime/filler-badge";
@@ -244,14 +243,21 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
   }, [details.name, epNum, episodeId]);
 
   const lastSaveRef = useRef(0);
+  const savedEpisodeRef = useRef("");
   const markedFinishedRef = useRef(false);
-  function onTU(current: number, duration: number) {
+  function onTU(current: number, duration: number, forceFinished = false) {
     if (!currentEp || duration <= 0) return;
     const now = Date.now();
-    if (now - lastSaveRef.current < 4000) return;
+    if (savedEpisodeRef.current !== episodeId) {
+      savedEpisodeRef.current = episodeId;
+      lastSaveRef.current = 0;
+      markedFinishedRef.current = false;
+    }
+    const isFinished = forceFinished || isEpisodeFinished(current, duration);
+    if (!forceFinished && now - lastSaveRef.current < 4000 && (!isFinished || markedFinishedRef.current)) return;
     lastSaveRef.current = now;
-
-    const isFinished = isEpisodeFinished(current, duration);
+    const counts = episodeProgress(details.seasons ?? [], episodeId, isFinished);
+    if (!counts) return;
     const nextWatchEpisode = isFinished ? nextEp : null;
     const historyEpisode = nextWatchEpisode?.ep ?? currentEp;
     const historySeason = nextWatchEpisode
@@ -281,64 +287,38 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
       progress: nextWatchEpisode ? 0 : noMoreEpisodes ? duration : current,
       duration: nextWatchEpisode ? 0 : noMoreEpisodes ? duration : duration,
       updatedAt: now,
-      pendingNext: noMoreEpisodes ? true : undefined,
+      pendingNext: noMoreEpisodes,
+      ...counts,
     });
 
-    const currentEpNumber =
-      typeof currentEp.number === "number"
-        ? currentEp.number
-        : currentEp.number
-        ? Number(currentEp.number)
-        : 1;
-    const totalEps = details.seasons?.reduce((acc, s) => acc + (s.episodes?.length || 0), 0) || null;
-    const isCompletedSeries = Boolean(noMoreEpisodes || (totalEps && currentEpNumber >= totalEps && isFinished));
-
-    fetch("/api/tracking/entries", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sourceId: details.ID,
-        title: details.name,
-        totalEpisodes: totalEps,
-        confirmMapping: true,
-        value: {
-          progress: currentEpNumber,
-          status: isCompletedSeries ? "completed" : "watching",
-          poster: details.poster ?? details.details_banner ?? null,
-        },
-      }),
-    }).catch(() => {});
-
-    if (noMoreEpisodes) {
-      markedFinishedRef.current = true;
+    if (isFinished && !markedFinishedRef.current) {
+      const isCompletedSeries = Boolean(noMoreEpisodes || (counts.totalEpisodes && counts.completedEpisodes >= counts.totalEpisodes));
+      fetch("/api/tracking/entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceId: details.ID,
+          title: details.name,
+          totalEpisodes: counts.totalEpisodes,
+          confirmMapping: true,
+          value: {
+            progress: counts.completedEpisodes,
+            status: isCompletedSeries ? "completed" : "watching",
+            poster: details.poster ?? details.details_banner ?? null,
+          },
+        }),
+      })
+        .then((res) => {
+          if (res.ok) window.dispatchEvent(new CustomEvent("calium:library-changed"));
+        })
+        .catch(() => {});
     }
+
+    markedFinishedRef.current = isFinished;
   }
 
   function onEnded() {
-    const currentEpNumber =
-      typeof currentEp?.number === "number"
-        ? currentEp.number
-        : currentEp?.number
-        ? Number(currentEp.number)
-        : 1;
-    const totalEps = details.seasons?.reduce((acc, s) => acc + (s.episodes?.length || 0), 0) || null;
-    const isCompletedSeries = Boolean(!nextEp || (totalEps && currentEpNumber >= totalEps));
-
-    fetch("/api/tracking/entries", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sourceId: details.ID,
-        title: details.name,
-        totalEpisodes: totalEps,
-        confirmMapping: true,
-        value: {
-          progress: currentEpNumber,
-          status: isCompletedSeries ? "completed" : "watching",
-          poster: details.poster ?? details.details_banner ?? null,
-        },
-      }),
-    }).catch(() => {});
+    onTU(1000, 1000, true);
 
     if (nextEp) {
       router.push(
@@ -347,31 +327,6 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
       return;
     }
 
-    if (!currentEp || markedFinishedRef.current) return;
-
-    upsertHistory({
-      animeId: details.ID,
-      animeName: details.name,
-      poster: details.poster ?? details.details_banner ?? null,
-      episodeId: currentEp.ID,
-      episodeName: currentEp.name,
-      episodeNumber:
-        typeof currentEp.number === "number"
-          ? currentEp.number
-          : currentEp.number
-          ? Number(currentEp.number)
-          : null,
-      seasonNumber:
-        typeof currentSeason?.number === "number"
-          ? currentSeason.number
-          : currentSeason?.number
-          ? Number(currentSeason.number)
-          : null,
-      progress: 1000,
-      duration: 1000,
-      updatedAt: Date.now(),
-      pendingNext: true,
-    });
   }
 
   return (
@@ -560,16 +515,6 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
                 )}
               </div>
             )}
-
-            {/* YouTube-style bottom horizontal episode switcher */}
-            <YouTubeEpisodeRail
-              animeId={details.ID}
-              animeName={details.name}
-              fallbackPoster={details.poster ?? details.details_banner ?? null}
-              episodes={currentSeason?.episodes ?? []}
-              activeEpisodeId={episodeId}
-              seasonName={currentSeason?.name ?? "Bölümler"}
-            />
           </div>
         </div>
 
