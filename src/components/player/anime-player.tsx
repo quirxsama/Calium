@@ -567,6 +567,20 @@ export function AnimePlayer({
     const p = playerRef.current;
     if (p) resumeFromRef.current = p.currentTime;
     setSelectedQualityIdx(idx);
+    const chosenVariant = currentTrack?.variants[idx];
+    if (chosenVariant?.quality) {
+      try {
+        const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
+        const parsed = stored ? JSON.parse(stored) : {};
+        parsed.defaultQuality = chosenVariant.quality;
+        localStorage.setItem(PLAYER_PREFS_STORAGE_KEY, JSON.stringify(parsed));
+        fetch("/api/preferences", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ defaultQuality: chosenVariant.quality }),
+        }).catch(() => {});
+      } catch {}
+    }
   }
 
   function changeAudio(idx: number) {
@@ -584,6 +598,20 @@ export function AnimePlayer({
     localStorage.setItem(AUDIO_STORAGE_KEY, String(idx));
     setSelectedAudio(idx);
     setSelectedQualityIdx(nextQIdx);
+    if (nextTrack) {
+      const lang = isTurkish(nextTrack.label) ? "tr" : isEnglish(nextTrack.label) ? "en" : "ja";
+      try {
+        const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
+        const parsed = stored ? JSON.parse(stored) : {};
+        parsed.defaultDubLanguage = lang;
+        localStorage.setItem(PLAYER_PREFS_STORAGE_KEY, JSON.stringify(parsed));
+        fetch("/api/preferences", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ defaultDubLanguage: lang }),
+        }).catch(() => {});
+      } catch {}
+    }
   }
 
   function onCanPlay() {

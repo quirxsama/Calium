@@ -186,6 +186,8 @@ export function IntegrationsTab() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Çakışma çözülemedi");
       }
+      setConflicts((prev) => prev.filter((c) => c.entryId !== conflict.entryId || c.provider !== conflict.provider));
+      setMessage({ type: "success", text: "Çakışma başarıyla çözüldü." });
       await loadData();
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Çözüm başarısız" });

@@ -208,11 +208,12 @@ export default function MyListsPage() {
                   </div>
                 </Link>
 
-                <div className="absolute right-3 top-3 hidden items-center gap-1 group-hover:flex">
+                <div className="absolute right-3 top-3 flex items-center gap-1">
                   <button
                     onClick={() => openSearch(list.id)}
                     className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--primary)]/10 hover:text-[var(--primary)]"
                     aria-label="Anime ekle"
+                    title="Anime ekle"
                   >
                     <Search className="h-4 w-4" />
                   </button>
@@ -220,6 +221,7 @@ export default function MyListsPage() {
                     onClick={() => handleDelete(list.id)}
                     className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition hover:bg-red-500/10 hover:text-red-400"
                     aria-label="Listeyi sil"
+                    title="Listeyi sil"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

@@ -8,6 +8,7 @@ import {
   Search,
   RefreshCw,
   Plus,
+  Minus,
   Play,
   Star,
   MoreVertical,
@@ -102,23 +103,23 @@ export default function LibraryPage() {
     }
   }
 
-  async function incrementEpisode(e: React.MouseEvent, item: TrackingItem) {
+  async function decrementEpisode(e: React.MouseEvent, item: TrackingItem) {
     e.preventDefault();
     e.stopPropagation();
     const current = item.value.progress ?? 0;
-    const total = item.totalEpisodes ?? 0;
-    if (total > 0 && current >= total) return;
+    if (current <= 0) return;
 
-    const next = current + 1;
-    setItems((prev) =>
-      prev.map((i) =>
+    const prev = current - 1;
+    const total = item.totalEpisodes ?? 0;
+    setItems((old) =>
+      old.map((i) =>
         i.id === item.id
           ? {
               ...i,
               value: {
                 ...i.value,
-                progress: next,
-                status: total > 0 && next >= total ? "completed" : i.value.status,
+                progress: prev,
+                status: total > 0 && prev < total && i.value.status === "completed" ? "watching" : i.value.status,
               },
             }
           : i
@@ -131,7 +132,41 @@ export default function LibraryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entryId: item.id,
-          version: item.version,
+          completedEpisodes: prev,
+        }),
+      });
+    } catch {}
+  }
+
+  async function incrementEpisode(e: React.MouseEvent, item: TrackingItem) {
+    e.preventDefault();
+    e.stopPropagation();
+    const current = item.value.progress ?? 0;
+    const total = item.totalEpisodes ?? 0;
+    if (total > 0 && current >= total) return;
+
+    const next = current + 1;
+    setItems((prevItems) =>
+      prevItems.map((i) =>
+        i.id === item.id
+          ? {
+              ...i,
+              value: {
+                ...i.value,
+                progress: next,
+                status: total > 0 && next >= total ? "completed" : i.value.status === "plan_to_watch" ? "watching" : i.value.status,
+              },
+            }
+          : i
+      )
+    );
+
+    try {
+      await fetch("/api/tracking/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: item.id,
           completedEpisodes: next,
         }),
       });
@@ -356,6 +391,16 @@ export default function LibraryPage() {
                     </span>
 
                     <div className="flex items-center gap-1 relative">
+                      {/* -1 Episode Quick Decrement */}
+                      <button
+                        onClick={(e) => decrementEpisode(e, item)}
+                        disabled={progress <= 0}
+                        title="-1 Bölüm"
+                        className="flex h-6 w-6 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)] text-[var(--foreground)] transition hover:bg-[var(--primary)] hover:text-white disabled:opacity-30"
+                      >
+                        <Minus className="h-3 w-3" />
+                      </button>
+
                       {/* +1 Episode Quick Increment */}
                       <button
                         onClick={(e) => incrementEpisode(e, item)}

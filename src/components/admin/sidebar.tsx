@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Shield, Settings, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Users, Shield, Settings, BarChart3, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -9,6 +9,7 @@ const NAV = [
   { href: "/admin/kullanicilar", label: "Kullanıcılar", icon: Users },
   { href: "/admin/moderasyon", label: "Moderasyon", icon: Shield },
   { href: "/admin/istatistikler", label: "İstatistikler", icon: BarChart3 },
+  { href: "/admin/apk", label: "Mobil APK", icon: Smartphone },
   { href: "/admin/ayarlar", label: "Site Ayarları", icon: Settings },
 ];
 

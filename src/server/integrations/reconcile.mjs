@@ -18,7 +18,7 @@ export async function reconcileHistoryToLibrary(userId, db) {
     const progress = item.episodeNumber && item.episodeNumber > 0 ? item.episodeNumber : 1;
 
     let targetStatus = "watching";
-    if (isFinished && existing?.totalEpisodes && progress >= existing.totalEpisodes) {
+    if ((isFinished && existing?.totalEpisodes && progress >= existing.totalEpisodes) || item.pendingNext) {
       targetStatus = "completed";
     } else if (isRecent) {
       targetStatus = "watching";

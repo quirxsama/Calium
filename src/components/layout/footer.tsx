@@ -21,6 +21,9 @@ export function Footer() {
           </div>
 
           <div className="flex items-center gap-4 text-sm">
+            <Link href="/indir" className="transition hover:text-[var(--foreground)]">
+              Mobil Uygulama (APK)
+            </Link>
             <Link href="/iletisim" className="transition hover:text-[var(--foreground)]">
               İletişim
             </Link>

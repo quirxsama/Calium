@@ -7,6 +7,7 @@ import { SeasonTabs } from "@/components/anime/season-tabs";
 import { FavoriteButton } from "@/components/anime/favorite-button";
 import { AddToListButton } from "@/components/anime/add-to-list-button";
 import { LibraryStatusButton } from "@/components/anime/library-status-button";
+import { BackButton } from "@/components/anime/back-button";
 import { AnimePosterFlip } from "@/components/anime/anime-poster-flip";
 import { CastSection } from "@/components/anime/cast-section";
 import { RecommendedAnime } from "@/components/anime/recommended-anime";
@@ -233,6 +234,9 @@ export default async function AnimeDetailPage({
       />
       {/* Banner */}
       <div className="relative h-[55vh] min-h-[360px] w-full overflow-hidden">
+        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20">
+          <BackButton />
+        </div>
         {details.details_banner ? (
           <AniziumImage
             src={details.details_banner}

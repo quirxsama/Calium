@@ -350,3 +350,19 @@ model EpisodeIntroSong {
 
   @@index([animeId])
 }
+
+model AppRelease {
+  id            String   @id @default(cuid())
+  version       String
+  versionCode   Int      @default(1)
+  notes         String?
+  fileName      String
+  filePath      String
+  fileSize      Int
+  downloadCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([createdAt])
+}
+

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
 import { AniziumImage } from "@/components/anime/anizium-image";
@@ -28,11 +28,22 @@ interface ListDetail {
 export default function ListDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const router = useRouter();
   const [list, setList] = useState<ListDetail | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  async function handleDeleteList() {
+    if (!confirm(`"${list?.name}" listesi ve içindeki tüm anime kayıtları silinsin mi?`)) return;
+    try {
+      const res = await fetch(`/api/lists/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push("/listelerim");
+      }
+    } catch {}
+  }
 
   useEffect(() => {
     async function load() {
@@ -126,6 +137,16 @@ export default function ListDetailPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {isOwner && (
+            <button
+              onClick={handleDeleteList}
+              className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 transition hover:bg-red-500/20"
+              title="Listeyi Sil"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Listeyi Sil</span>
+            </button>
+          )}
           {user && !isOwner && (
             <button
               onClick={toggleLike}

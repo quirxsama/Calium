@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth/context";
-import { User, Settings, List, LogOut, LogIn, UserPlus } from "lucide-react";
+import { User, Settings, List, LogOut, LogIn, UserPlus, Smartphone, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function AccountMenu() {
@@ -82,9 +82,13 @@ export function AccountMenu() {
           </div>
 
           <div className="py-1">
+            {user.role === "admin" && (
+              <MenuLink href="/admin" icon={Shield} label="Admin Paneli" onClick={() => setOpen(false)} />
+            )}
             <MenuLink href={`/profil/${user.username}`} icon={User} label="Profilim" onClick={() => setOpen(false)} />
             <MenuLink href="/listelerim" icon={List} label="Listelerim" onClick={() => setOpen(false)} />
             <MenuLink href="/ayarlar" icon={Settings} label="Ayarlar" onClick={() => setOpen(false)} />
+            <MenuLink href="/indir" icon={Smartphone} label="Mobil APK İndir" onClick={() => setOpen(false)} />
           </div>
 
           <div className="border-t border-[var(--border)] py-1">

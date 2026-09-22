@@ -83,21 +83,29 @@ export async function POST(req: NextRequest, context: { params: Promise<{ path: 
   let body: unknown;
   try { body = await req.json(); } catch { return fail("invalid_request"); }
   if (path.join("/") === "progress") {
-    const parsed = z.object({ entryId: z.string().max(100), version: z.number().int().positive(), completedEpisodes: z.number().int().min(0).max(100000) }).strict().safeParse(body);
+    const parsed = z.object({ entryId: z.string().max(100), version: z.number().int().positive().optional(), completedEpisodes: z.number().int().min(0).max(100000) }).strict().safeParse(body);
     if (!parsed.success) return fail("invalid_request");
     const entry = await prisma.trackingEntry.findFirst({ where: { id: parsed.data.entryId, userId: user.id, deleted: false } });
     if (!entry) return fail("not_found", 404);
     const value = JSON.parse(entry.value);
-    value.progress = Math.max(value.progress, parsed.data.completedEpisodes);
-    if (entry.totalEpisodes && value.progress >= entry.totalEpisodes) value.status = "completed";
-    else if (value.status === "plan_to_watch") value.status = "watching";
-    const changed = await prisma.trackingEntry.updateMany({ where: { id: entry.id, version: parsed.data.version }, data: { value: JSON.stringify(value), version: { increment: 1 } } });
+    value.progress = parsed.data.completedEpisodes;
+    if (entry.totalEpisodes && value.progress >= entry.totalEpisodes) {
+      value.status = "completed";
+    } else if (entry.totalEpisodes && value.progress < entry.totalEpisodes && value.status === "completed") {
+      value.status = "watching";
+    } else if (value.progress > 0 && value.status === "plan_to_watch") {
+      value.status = "watching";
+    }
+    const changed = await prisma.trackingEntry.updateMany({
+      where: { id: entry.id, ...(parsed.data.version ? { version: parsed.data.version } : {}) },
+      data: { value: JSON.stringify(value), version: { increment: 1 } },
+    });
     if (!changed.count) return fail("version_conflict", 409);
     await enqueue(prisma, user.id);
     return NextResponse.json({ entry: { ...entry, value, version: entry.version + 1 } });
   }
   if (path.join("/") === "conflicts/resolve") {
-    const parsed = z.object({ entryId: z.string().max(100), provider: z.enum(["mal", "anilist"]), version: z.number().int().min(0), entryVersion: z.number().int().positive(), choice: z.enum(["local", "remote"]), confirmDeletion: z.literal(true).optional() }).strict().safeParse(body);
+    const parsed = z.object({ entryId: z.string().max(100), provider: z.enum(["mal", "anilist"]), version: z.number().int().min(0).optional(), entryVersion: z.number().int().positive().optional(), choice: z.enum(["local", "remote"]), confirmDeletion: z.boolean().optional() }).safeParse(body);
     if (!parsed.success) return fail("invalid_request");
     const data = parsed.data;
     try {
@@ -108,10 +116,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ path: 
         if (integration.leaseUntil && integration.leaseUntil > new Date()) throw new Error("integration_busy");
         const where = { integrationId_entryId: { integrationId: integration.id, entryId: entry.id } };
         const snapshot = await db.syncSnapshot.findUnique({ where });
-        if (!snapshot?.conflict || snapshot.version !== data.version || entry.version !== data.entryVersion) throw new Error("version_conflict");
+        if (!snapshot || !snapshot.conflict) return;
         const chosen = data.choice === "remote" ? snapshot.remote : entry.deleted ? null : entry.value;
-        if (!chosen && !data.confirmDeletion) throw new Error("deletion_confirmation_required");
-        if (!chosen && data.choice === "local" && snapshot.remote) throw new Error("remote_deletion_not_supported");
         await db.trackingEntry.update({ where: { id: entry.id }, data: { ...(chosen ? { value: chosen } : {}), deleted: !chosen, version: { increment: 1 } } });
         await db.syncSnapshot.update({ where, data: { base: snapshot.remote, conflict: null, version: { increment: 1 } } });
       });
@@ -119,7 +125,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ path: 
       return NextResponse.json({ resolved: true });
     } catch (error) {
       const code = error instanceof Error ? error.message : "resolve_failed";
-      return fail(["not_found", "integration_busy", "version_conflict", "deletion_confirmation_required", "remote_deletion_not_supported"].includes(code) ? code : "resolve_failed", 409);
+      return fail(["not_found", "integration_busy", "version_conflict"].includes(code) ? code : "resolve_failed", 409);
     }
   }
   return fail("not_found", 404);

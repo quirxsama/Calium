@@ -13,9 +13,10 @@ import type {
 import type { UpcomingEpisodePlaceholder } from "@/lib/anizium/calendar";
 import { upsertHistory, getHistoryEntry, isEpisodeFinished } from "@/lib/storage/history";
 import { usePublishActivity } from "@/lib/realtime/presence";
-import { ArrowLeft, SkipForward, SkipBack, ChevronDown } from "lucide-react";
-import { cn, formatDuration, parseTimeCode } from "@/lib/utils";
+import { ArrowLeft, SkipForward, SkipBack } from "lucide-react";
+import { formatDuration, parseTimeCode } from "@/lib/utils";
 import { EpisodeList } from "@/components/anime/episode-list";
+import { YouTubeEpisodeRail } from "./youtube-episode-rail";
 import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
 import { DownloadButton } from "@/components/player/download-button";
 import { FillerBadge } from "@/components/anime/filler-badge";
@@ -283,12 +284,62 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
       pendingNext: noMoreEpisodes ? true : undefined,
     });
 
+    const currentEpNumber =
+      typeof currentEp.number === "number"
+        ? currentEp.number
+        : currentEp.number
+        ? Number(currentEp.number)
+        : 1;
+    const totalEps = details.seasons?.reduce((acc, s) => acc + (s.episodes?.length || 0), 0) || null;
+    const isCompletedSeries = Boolean(noMoreEpisodes || (totalEps && currentEpNumber >= totalEps && isFinished));
+
+    fetch("/api/tracking/entries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourceId: details.ID,
+        title: details.name,
+        totalEpisodes: totalEps,
+        confirmMapping: true,
+        value: {
+          progress: currentEpNumber,
+          status: isCompletedSeries ? "completed" : "watching",
+          poster: details.poster ?? details.details_banner ?? null,
+        },
+      }),
+    }).catch(() => {});
+
     if (noMoreEpisodes) {
       markedFinishedRef.current = true;
     }
   }
 
   function onEnded() {
+    const currentEpNumber =
+      typeof currentEp?.number === "number"
+        ? currentEp.number
+        : currentEp?.number
+        ? Number(currentEp.number)
+        : 1;
+    const totalEps = details.seasons?.reduce((acc, s) => acc + (s.episodes?.length || 0), 0) || null;
+    const isCompletedSeries = Boolean(!nextEp || (totalEps && currentEpNumber >= totalEps));
+
+    fetch("/api/tracking/entries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourceId: details.ID,
+        title: details.name,
+        totalEpisodes: totalEps,
+        confirmMapping: true,
+        value: {
+          progress: currentEpNumber,
+          status: isCompletedSeries ? "completed" : "watching",
+          poster: details.poster ?? details.details_banner ?? null,
+        },
+      }),
+    }).catch(() => {});
+
     if (nextEp) {
       router.push(
         `/izle/${encodeURIComponent(details.ID)}/${encodeURIComponent(nextEp.ep.ID)}`
@@ -316,8 +367,8 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
           : currentSeason?.number
           ? Number(currentSeason.number)
           : null,
-      progress: 999999,
-      duration: 1,
+      progress: 1000,
+      duration: 1000,
       updatedAt: Date.now(),
       pendingNext: true,
     });
@@ -509,6 +560,16 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
                 )}
               </div>
             )}
+
+            {/* YouTube-style bottom horizontal episode switcher */}
+            <YouTubeEpisodeRail
+              animeId={details.ID}
+              animeName={details.name}
+              fallbackPoster={details.poster ?? details.details_banner ?? null}
+              episodes={currentSeason?.episodes ?? []}
+              activeEpisodeId={episodeId}
+              seasonName={currentSeason?.name ?? "Bölümler"}
+            />
           </div>
         </div>
 
@@ -526,63 +587,6 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
           />
         </aside>
       </div>
-
-      {/* Episode list — mobile collapsible */}
-      <MobileEpisodeSection
-        animeId={details.ID}
-        episodes={currentSeason?.episodes ?? []}
-        activeEpisodeId={episodeId}
-        upcomingEpisode={shouldShowUpcoming ? upcomingEpisode : null}
-        title={currentSeason?.name ?? "Bölümler"}
-      />
-
-    </div>
-  );
-}
-
-function MobileEpisodeSection({
-  animeId,
-  episodes,
-  activeEpisodeId,
-  upcomingEpisode,
-  title,
-}: {
-  animeId: string;
-  episodes: EpisodeData[];
-  activeEpisodeId: string;
-  upcomingEpisode?: UpcomingEpisodePlaceholder | null;
-  title: string;
-}) {
-  const [open, setOpen] = useState(false);
-
-  if (episodes.length === 0) return null;
-
-  return (
-    <div className="mt-6 lg:hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm font-semibold min-h-[48px]"
-        aria-expanded={open}
-      >
-        <span>{title} ({episodes.length} bölüm)</span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 text-[var(--muted-foreground)] transition-transform duration-200",
-            open && "rotate-180"
-          )}
-        />
-      </button>
-      {open && (
-        <div className="mt-3 max-h-[60vh] overflow-y-auto no-scrollbar">
-          <EpisodeList
-            animeId={animeId}
-            episodes={episodes}
-            activeEpisodeId={activeEpisodeId}
-            upcomingEpisode={upcomingEpisode}
-            variant="sidebar"
-          />
-        </div>
-      )}
     </div>
   );
 }

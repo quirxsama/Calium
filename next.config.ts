@@ -54,6 +54,15 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ["shazamio-core"],
   allowedDevOrigins: ['192.168.1.108'],
+  async redirects() {
+    return [
+      {
+        source: "/apk",
+        destination: "/indir",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
