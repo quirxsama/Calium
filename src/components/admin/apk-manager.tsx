@@ -25,7 +25,7 @@ type Release = {
   createdAt: string;
 };
 
-const CHUNK_SIZE = 15 * 1024 * 1024; // 15 MB (Cloudflare 100MB sınırına asla takılmaz)
+const CHUNK_SIZE = 800 * 1024; // 800 KB (Nginx 1MB varsayılan sınırını ve proxy limitlerini aşmaz)
 
 function formatBytes(bytes: number) {
   if (!bytes || bytes <= 0) return "Harici Bağlantı";
@@ -463,7 +463,7 @@ export function ApkManager() {
                     Seçilen dosya: {selectedFile.name} ({formatBytes(selectedFile.size)})
                   </p>
                   <p className="text-[11px] text-[var(--muted-foreground)]">
-                    Dosya otomatik olarak 15MB&apos;lık parçalar halinde yüklenir (Cloudflare 100MB sınırına takılmaz).
+                    Dosya otomatik olarak parçalar halinde yüklenir (Cloudflare ve sunucu limitlerine takılmaz).
                   </p>
                 </div>
               )}

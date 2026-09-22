@@ -51,6 +51,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     optimizePackageImports: ["lucide-react"],
+    proxyClientMaxBodySize: "100mb",
   },
   serverExternalPackages: ["shazamio-core"],
   allowedDevOrigins: ['192.168.1.108'],
