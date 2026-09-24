@@ -1,14 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { selectRandomAnime } from "@/lib/anizium/random";
 import Link from "next/link";
 import { AniziumImage } from "@/components/anime/anizium-image";
-import { PlayCircle } from "lucide-react";
+import { LoaderCircle, PlayCircle, Shuffle } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
 import { formatDuration } from "@/lib/utils";
 
 export function EngagementPanels() {
   const history = useHistory();
+  const router = useRouter();
+  const randomRequest = useRef<AbortController | null>(null);
+  const [randomLoading, setRandomLoading] = useState(false);
+  const [randomError, setRandomError] = useState<string | null>(null);
+  const [navigating, startTransition] = useTransition();
+  const randomBusy = randomLoading || navigating;
+
+  useEffect(() => () => randomRequest.current?.abort(), []);
+
+  async function openRandomAnime() {
+    if (randomRequest.current || randomBusy) return;
+    const controller = new AbortController();
+    randomRequest.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+    setRandomLoading(true);
+    setRandomError(null);
+    try {
+      const id = await selectRandomAnime(async (kind, page) => {
+        const response = await fetch(`/api/anizium/catalog?kind=${kind}&page=${page}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Katalog yüklenemedi");
+        return response.json();
+      });
+      if (!controller.signal.aborted) {
+        startTransition(() => router.push(`/anime/${encodeURIComponent(id)}`));
+      }
+    } catch {
+      if (randomRequest.current === controller) {
+        setRandomError("Rastgele anime seçilemedi. Lütfen tekrar dene.");
+      }
+    } finally {
+      clearTimeout(timeout);
+      randomRequest.current = null;
+      setRandomLoading(false);
+    }
+  }
   const [episodeThumb, setEpisodeThumb] = useState<{ key: string; url: string | null } | null>(null);
 
   const continueItem = history[0];
@@ -113,12 +153,26 @@ export function EngagementPanels() {
               <PlayCircle className="h-4 w-4" />
               {continueItem ? "Kaldığın yerden aç" : "İzlemeye başla"}
             </Link>
+            <button
+              type="button"
+              onClick={openRandomAnime}
+              disabled={randomBusy}
+              aria-busy={randomBusy}
+              aria-describedby="random-anime-status"
+              className="inline-flex items-center gap-2 rounded-full border border-white/30 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white disabled:cursor-wait disabled:opacity-60"
+            >
+              {randomBusy ? <LoaderCircle aria-hidden="true" className="h-4 w-4 motion-safe:animate-spin" /> : <Shuffle aria-hidden="true" className="h-4 w-4" />}
+              {randomBusy ? "Anime seçiliyor…" : "Rastgele Anime"}
+            </button>
             {continueItem && (
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/65">
                 {formatDuration(continueItem.progress)} / {formatDuration(continueItem.duration)}
               </span>
             )}
           </div>
+          <p id="random-anime-status" role="status" aria-live="polite" className="text-sm text-white/75">
+            {randomError ?? (randomBusy ? "Tüm dizi ve film kataloğundan seçiliyor…" : "Ne izleyeceğine karar veremedin mi? Tüm dizi ve filmler arasından rastgele keşfet.")}
+          </p>
         </div>
       </div>
     </section>
