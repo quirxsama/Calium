@@ -37,6 +37,7 @@ const TYPE_LABEL: Record<string, (p: NotifItem["payload"]) => string> = {
   room_join_accepted: (p) => `${p.displayName || p.username} katılma isteğinizi kabul etti`,
   offline_invite: (p) => `${p.displayName || p.username} seni birlikte izlemeye çağırıyor`,
   offline_invite_accepted: (p) => `${p.displayName || p.username} davetinizi kabul etti — oda oluşturuldu`,
+  new_episode: (p) => `${p.animeTitle || "Anime"} için yeni bölüm çıktı: Bölüm ${p.episodeNumber}`,
 };
 
 export function NotificationBell() {
@@ -376,6 +377,8 @@ function linkFor(n: NotifItem): string | null {
     case "room_join_request":
     case "offline_invite":
       return null;
+    case "new_episode":
+      return n.payload.animeId ? `/anime/${n.payload.animeId}` : null;
     default:
       return null;
   }

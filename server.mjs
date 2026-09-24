@@ -7,6 +7,7 @@ import next from "next";
 import { WebSocketServer } from "ws";
 import { PrismaClient } from "@prisma/client";
 import { startWorker } from "./src/server/integrations/worker.mjs";
+import { startReleaseWorker } from "./src/server/notifications/release-worker.mjs";
 
 import { authenticateRequest } from "./src/server/ws/auth.mjs";
 import {
@@ -123,6 +124,7 @@ globalThis.__calium_ws = {
 // ---------- Bootstrap ----------
 await app.prepare();
 const stopIntegrationWorker = startWorker(prisma);
+const stopReleaseWorker = startReleaseWorker(prisma, port);
 
 const server = createServer((req, res) => {
   const parsedUrl = parse(req.url ?? "/", true);
@@ -235,6 +237,7 @@ function shutdown() {
   console.log("[server] shutting down...");
   clearInterval(heartbeat);
   stopIntegrationWorker();
+  stopReleaseWorker();
   wss.close();
   server.close(() => {
     prisma.$disconnect().finally(() => process.exit(0));
