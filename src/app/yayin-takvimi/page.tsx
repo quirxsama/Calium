@@ -7,7 +7,7 @@ import { buildBreadcrumbJsonLd, SITE_NAME } from "@/lib/seo";
 import type { CalendarContent, CalendarDay } from "@/lib/anizium/schemas";
 import { isCalendarEpisode } from "@/lib/anizium/calendar";
 
-export const revalidate = 900;
+export const dynamic = "force-dynamic";
 
 const TIME_ZONE = "Europe/Istanbul";
 
@@ -189,15 +189,8 @@ function DaySection({ day }: { day: CalendarDay }) {
 }
 
 export default async function YayinTakvimiPage() {
-  let days: CalendarDay[] = [];
-  let error: string | null = null;
-
-  try {
-    const calendar = await getCalendar();
-    days = filterActiveDays(calendar.data);
-  } catch {
-    error = "Yayın takvimi şu anda yüklenemedi. Lütfen daha sonra tekrar dene.";
-  }
+  const calendar = await getCalendar();
+  const days = filterActiveDays(calendar.data);
 
   const totalItems = days.reduce((sum, day) => sum + day.contents.length, 0);
   const totalAiring = days.reduce(
@@ -260,13 +253,7 @@ export default async function YayinTakvimiPage() {
           </nav>
         )}
 
-        {error && (
-          <div className="rounded-3xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-200">
-            {error}
-          </div>
-        )}
-
-        {!error && days.length === 0 && (
+        {days.length === 0 && (
           <div className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-10 text-center">
             <Sparkles className="mx-auto h-10 w-10 text-[var(--primary)]" />
             <h2 className="mt-4 text-xl font-bold">Takvimde gösterilecek içerik yok</h2>

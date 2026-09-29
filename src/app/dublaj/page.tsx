@@ -13,16 +13,11 @@ export default async function DublajPage({
 }) {
   const { page: pageStr } = await searchParams;
   const page = Number(pageStr ?? "1") || 1;
-  let res;
-  try {
-    res = await fetchPagedCatalog(
-      (p) => getCatalog({ kind: "trdub", page: p }),
-      page,
-      24
-    );
-  } catch {
-    res = { success: false, page: { data: [], total_pages: 0, page } };
-  }
+  const res = await fetchPagedCatalog(
+    (p) => getCatalog({ kind: "trdub", page: p }),
+    page,
+    24
+  );
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
       <header className="mb-6">

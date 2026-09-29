@@ -34,19 +34,11 @@ export default async function KesfetPage({
   const id = sp.id;
   const page = Number(sp.page ?? "1") || 1;
 
-  let res;
-  try {
-    res = await fetchPagedCatalog(
-      (p) => getCatalog({ kind, id, page: p }),
-      page,
-      24
-    );
-  } catch {
-    res = { success: false, page: { data: [], total_pages: 0, page } } as {
-      success: boolean;
-      page: { data: []; total_pages: number; page: number };
-    };
-  }
+  const res = await fetchPagedCatalog(
+    (p) => getCatalog({ kind, id, page: p }),
+    page,
+    24
+  );
 
   const activeGenre = kind === "genre" ? GENRES.find((g) => g.id === id) : null;
 
