@@ -106,14 +106,18 @@ export async function getLatestEpisodes(page = 1): Promise<LatestEpisodeResponse
   const raw = await aniziumFetch(`/page/last-added-episodes?page=${page}`, {
     revalidate: CACHE_TTL.latest,
   });
-  return proxyLatestResponseAssets(LatestEpisodeResponseSchema.parse(raw));
+  const response = LatestEpisodeResponseSchema.parse(raw);
+  if (!response.success) throw new Error("Anizium latest episodes response was unsuccessful");
+  return proxyLatestResponseAssets(response);
 }
 
 export async function getCalendar(): Promise<CalendarResponse> {
   const raw = await aniziumFetch("/page/calendar", {
     revalidate: CACHE_TTL.calendar,
   });
-  return proxyCalendarResponseAssets(CalendarResponseSchema.parse(raw));
+  const response = CalendarResponseSchema.parse(raw);
+  if (!response.success) throw new Error("Anizium calendar response was unsuccessful");
+  return proxyCalendarResponseAssets(response);
 }
 
 export type CatalogKind = "series" | "movie" | "trdub" | "genre";
@@ -138,7 +142,9 @@ export async function getCatalog(
       break;
   }
   const raw = await aniziumFetch(url, { revalidate: CACHE_TTL.catalog });
-  return proxyApiResponseAssets(ApiResponseSchema.parse(raw));
+  const response = ApiResponseSchema.parse(raw);
+  if (!response.success) throw new Error("Anizium catalog response was unsuccessful");
+  return proxyApiResponseAssets(response);
 }
 
 export async function getTop(page = 1): Promise<ApiResponse> {
@@ -146,7 +152,9 @@ export async function getTop(page = 1): Promise<ApiResponse> {
     `/page/top?platform=favorite&page=${page}`,
     { revalidate: CACHE_TTL.top }
   );
-  return proxyApiResponseAssets(ApiResponseSchema.parse(raw));
+  const response = ApiResponseSchema.parse(raw);
+  if (!response.success) throw new Error("Anizium top response was unsuccessful");
+  return proxyApiResponseAssets(response);
 }
 
 export async function getAnimeDetails(id: string): Promise<AnimeDetailsResponse> {

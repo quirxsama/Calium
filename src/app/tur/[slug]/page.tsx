@@ -74,16 +74,11 @@ export default async function TurPage({
   const genre = GENRES.find((g) => g.slug === slug);
   if (!genre) notFound();
 
-  let res;
-  try {
-    res = await fetchPagedCatalog(
-      (p) => getCatalog({ kind: "genre", id: genre.id, page: p }),
-      page,
-      24
-    );
-  } catch {
-    res = { success: false, page: { data: [], total_pages: 0, page } };
-  }
+  const res = await fetchPagedCatalog(
+    (p) => getCatalog({ kind: "genre", id: genre.id, page: p }),
+    page,
+    24
+  );
 
   const pageTitle = `${genre.name} anime önerileri`;
   const intro = buildGenreDescription(genre.name, page);

@@ -24,13 +24,6 @@ function latestToAnime(list: LatestEpisodeData[]): AnimeData[] {
   }));
 }
 
-async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await fn();
-  } catch {
-    return fallback;
-  }
-}
 
 const EMPTY_PAGE = {
   success: true,
@@ -88,10 +81,10 @@ function mergeLatestPages(pages: LatestEpisodeResponse[]): LatestEpisodeResponse
   };
 }
 
-async function loadRailPages<T>(loader: (page: number) => Promise<T>, fallback: T) {
+async function loadRailPages<T>(loader: (page: number) => Promise<T>) {
   return Promise.all(
     Array.from({ length: RAIL_PAGE_COUNT }, (_, index) =>
-      safe(() => loader(index + 1), fallback)
+      loader(index + 1)
     )
   );
 }
@@ -100,12 +93,12 @@ export const revalidate = 600;
 
 export default async function Home() {
   const [latestPages, topPages, dubPages, actionPages, romancePages, isekaiPages] = await Promise.all([
-    loadRailPages((page) => getLatestEpisodes(page), EMPTY_LATEST),
-    loadRailPages((page) => getTop(page), EMPTY_PAGE),
-    loadRailPages((page) => getCatalog({ kind: "trdub", page }), EMPTY_PAGE),
-    loadRailPages((page) => getCatalog({ kind: "genre", id: "62263", page }), EMPTY_PAGE),
-    loadRailPages((page) => getCatalog({ kind: "genre", id: "59624", page }), EMPTY_PAGE),
-    loadRailPages((page) => getCatalog({ kind: "genre", id: "23813", page }), EMPTY_PAGE),
+    loadRailPages((page) => getLatestEpisodes(page)),
+    loadRailPages((page) => getTop(page)),
+    loadRailPages((page) => getCatalog({ kind: "trdub", page })),
+    loadRailPages((page) => getCatalog({ kind: "genre", id: "62263", page })),
+    loadRailPages((page) => getCatalog({ kind: "genre", id: "59624", page })),
+    loadRailPages((page) => getCatalog({ kind: "genre", id: "23813", page })),
   ]);
 
   const latest = mergeLatestPages(latestPages);
@@ -121,10 +114,7 @@ export default async function Home() {
   // Hero için banner + logo detaylardan gelir; paralel çek, hata halinde temel veriyle devam et.
   const heroDetails = await Promise.all(
     heroBase.map((a) =>
-      safe(
-        () => getAnimeDetails(a.ID),
-        null as Awaited<ReturnType<typeof getAnimeDetails>> | null
-      )
+      getAnimeDetails(a.ID).catch(() => null)
     )
   );
 
