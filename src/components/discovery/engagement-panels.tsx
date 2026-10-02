@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { selectRandomAnime } from "@/lib/anizium/random";
+import { CatalogRequestError, selectRandomAnime } from "@/lib/anizium/random";
 import Link from "next/link";
 import { AniziumImage } from "@/components/anime/anizium-image";
 import { LoaderCircle, PlayCircle, Shuffle } from "lucide-react";
@@ -33,15 +33,17 @@ export function EngagementPanels() {
           signal: controller.signal,
           cache: "no-store",
         });
-        if (!response.ok) throw new Error("Katalog yüklenemedi");
+        if (!response.ok) throw new CatalogRequestError(page, response.status);
         return response.json();
       });
       if (!controller.signal.aborted) {
         startTransition(() => router.push(`/anime/${encodeURIComponent(id)}`));
       }
-    } catch {
+    } catch (error) {
       if (randomRequest.current === controller) {
-        setRandomError("Rastgele anime seçilemedi. Lütfen tekrar dene.");
+        setRandomError(controller.signal.aborted
+          ? "Dizi seçimi zaman aşımına uğradı. Lütfen tekrar dene."
+          : `${error instanceof Error ? error.message : "Rastgele anime dizisi seçilemedi."} Lütfen tekrar dene.`);
       }
     } finally {
       clearTimeout(timeout);
@@ -162,7 +164,7 @@ export function EngagementPanels() {
               className="inline-flex items-center gap-2 rounded-full border border-white/30 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white disabled:cursor-wait disabled:opacity-60"
             >
               {randomBusy ? <LoaderCircle aria-hidden="true" className="h-4 w-4 motion-safe:animate-spin" /> : <Shuffle aria-hidden="true" className="h-4 w-4" />}
-              {randomBusy ? "Anime seçiliyor…" : "Rastgele Anime"}
+              {randomBusy ? "Anime dizisi seçiliyor…" : "Rastgele Anime Dizisi"}
             </button>
             {continueItem && (
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/65">
@@ -171,7 +173,7 @@ export function EngagementPanels() {
             )}
           </div>
           <p id="random-anime-status" role="status" aria-live="polite" className="text-sm text-white/75">
-            {randomError ?? (randomBusy ? "Tüm dizi ve film kataloğundan seçiliyor…" : "Ne izleyeceğine karar veremedin mi? Tüm dizi ve filmler arasından rastgele keşfet.")}
+            {randomError ?? (randomBusy ? "Dizi kataloğundan seçiliyor…" : "Ne izleyeceğine karar veremedin mi? Anime dizileri arasından rastgele keşfet. Filmler dahil değildir.")}
           </p>
         </div>
       </div>

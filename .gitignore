@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 .tmp/
+/.calium-watchdog/
 
 # debug
 npm-debug.log*

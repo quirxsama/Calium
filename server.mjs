@@ -8,6 +8,7 @@ import { WebSocketServer } from "ws";
 import { PrismaClient } from "@prisma/client";
 import { startWorker } from "./src/server/integrations/worker.mjs";
 import { startReleaseWorker } from "./src/server/notifications/release-worker.mjs";
+import { startAniziumWatchdog } from "./src/server/anizium-watchdog.mjs";
 
 import { authenticateRequest } from "./src/server/ws/auth.mjs";
 import {
@@ -125,6 +126,7 @@ globalThis.__calium_ws = {
 await app.prepare();
 const stopIntegrationWorker = startWorker(prisma);
 const stopReleaseWorker = startReleaseWorker(prisma, port);
+const stopAniziumWatchdog = startAniziumWatchdog();
 
 const server = createServer((req, res) => {
   const parsedUrl = parse(req.url ?? "/", true);
@@ -238,6 +240,7 @@ function shutdown() {
   clearInterval(heartbeat);
   stopIntegrationWorker();
   stopReleaseWorker();
+  stopAniziumWatchdog();
   wss.close();
   server.close(() => {
     prisma.$disconnect().finally(() => process.exit(0));

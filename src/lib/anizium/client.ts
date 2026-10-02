@@ -38,7 +38,28 @@ export type AniziumAssetFetchOpts = AniziumFetchOpts & {
   headers?: HeadersInit;
 };
 
+function promptRecoveryProbe(error: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) return;
+  const message = error instanceof Error ? error.message : "";
+  if (/HTTP (400|404)\b|env değişkenleri zorunlu|Unauthorized|Geçersiz Anizium/.test(message)) return;
+  (globalThis as typeof globalThis & {
+    __calium_anizium_failure?: () => void;
+  }).__calium_anizium_failure?.();
+}
+
 export async function aniziumFetch<T = unknown>(
+  path: string,
+  opts: AniziumFetchOpts = {}
+): Promise<T> {
+  try {
+    return await fetchAnizium<T>(path, opts);
+  } catch (error) {
+    promptRecoveryProbe(error, opts.signal);
+    throw error;
+  }
+}
+
+async function fetchAnizium<T = unknown>(
   path: string,
   opts: AniziumFetchOpts = {}
 ): Promise<T> {
@@ -141,6 +162,18 @@ async function aniziumFetchViaWorker<T = unknown>(
 }
 
 export async function aniziumAssetFetch(
+  assetUrl: string,
+  opts: AniziumAssetFetchOpts = {}
+): Promise<Response> {
+  try {
+    return await fetchAniziumAsset(assetUrl, opts);
+  } catch (error) {
+    promptRecoveryProbe(error, opts.signal);
+    throw error;
+  }
+}
+
+async function fetchAniziumAsset(
   assetUrl: string,
   opts: AniziumAssetFetchOpts = {}
 ): Promise<Response> {

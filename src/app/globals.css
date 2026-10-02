@@ -92,7 +92,7 @@ body {
 }
 @media (max-width: 767px) {
   body {
-    padding-bottom: 4rem; /* h-16 = 64px */
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
   }
 }
 

@@ -20,7 +20,7 @@ export function MobileNav() {
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-50 md:hidden border-t border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-xl safe-bottom"
+      className="fixed bottom-0 inset-x-0 z-50 md:hidden border-t border-[var(--border)] bg-[var(--background)] safe-bottom"
       aria-label="Mobil navigasyon"
     >
       <div className="flex items-center justify-around h-16">
