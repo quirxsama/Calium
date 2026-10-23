@@ -22,6 +22,12 @@ export function startReleaseWorker(db, port = 3000) {
       createdAt: row.createdAt.toISOString(),
     });
 
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { dndEnabled: true },
+    });
+    if (user?.dndEnabled) return;
+
     const devices = await db.deviceToken.findMany({
       where: { userId },
       select: { token: true },
@@ -75,7 +81,7 @@ export function startReleaseWorker(db, port = 3000) {
   const initialTimeout = setTimeout(checkLatest, 10000);
   initialTimeout.unref();
 
-  const interval = setInterval(checkLatest, 120000);
+  const interval = setInterval(checkLatest, 60000);
   interval.unref();
 
   return () => {
