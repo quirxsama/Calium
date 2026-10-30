@@ -52,6 +52,8 @@ model User {
   notifications Notification[]
   loginIps      LoginIp[]
   deviceTokens  DeviceToken[]
+  comments      Comment[]
+  ratings       Rating[]
 }
 
 model LoginIp {
@@ -394,6 +396,36 @@ model ReleasedEpisode {
 
   @@unique([animeId, seasonNumber, episodeNumber])
   @@index([createdAt])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  userId    String
+  animeId   String
+  episodeId String? // null = seri yorumu, dolu = bölüm yorumu
+  body      String
+  deleted   Boolean  @default(false) // soft delete — moderasyon kaydı korunur
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([animeId, episodeId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+model Rating {
+  userId    String
+  animeId   String
+  value     Int // 1..10
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, animeId])
+  @@index([animeId])
 }
 
 

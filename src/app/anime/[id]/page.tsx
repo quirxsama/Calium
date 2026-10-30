@@ -10,6 +10,8 @@ import { LibraryStatusButton } from "@/components/anime/library-status-button";
 import { BackButton } from "@/components/anime/back-button";
 import { AnimePosterFlip } from "@/components/anime/anime-poster-flip";
 import { CastSection } from "@/components/anime/cast-section";
+import { CommentThread } from "@/components/comments/comment-thread";
+import { RatingWidget } from "@/components/comments/rating-widget";
 import { RecommendedAnime } from "@/components/anime/recommended-anime";
 import { WatchCta } from "@/components/anime/watch-cta";
 import { Star, Calendar } from "lucide-react";
@@ -310,6 +312,10 @@ export default async function AnimeDetailPage({
               </p>
             )}
 
+            <div className="mt-5">
+              <RatingWidget animeId={details.ID} />
+            </div>
+
             {upcomingCalendarItem && (
               <div className="mt-5 max-w-3xl rounded-2xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--primary)]">
@@ -454,6 +460,10 @@ export default async function AnimeDetailPage({
             />
           </>
         )}
+
+        <section className="mt-10 border-t border-[var(--border)] pt-8">
+          <CommentThread animeId={details.ID} heading="Seri yorumları" />
+        </section>
       </div>
     </div>
   );

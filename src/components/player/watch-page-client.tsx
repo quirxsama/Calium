@@ -19,6 +19,7 @@ import { EpisodeList } from "@/components/anime/episode-list";
 import { WatchTogetherButton } from "@/components/rooms/watch-together-button";
 import { DownloadButton } from "@/components/player/download-button";
 import { FillerBadge } from "@/components/anime/filler-badge";
+import { CommentThread } from "@/components/comments/comment-thread";
 import type { IntroSongData } from "./intro-song-badge";
 import { getRecapForEpisode, type RecapInterval } from "@/lib/anime-skip/client";
 
@@ -515,6 +516,14 @@ export function WatchPageClient({ details, episodeId, upcomingEpisode = null }: 
                 )}
               </div>
             )}
+          </div>
+
+          <div className="mt-8 border-t border-[var(--border)] pt-6">
+            <CommentThread
+              animeId={details.ID}
+              episodeId={isMovie ? null : episodeId}
+              heading={isMovie ? "Yorumlar" : "Bölüm yorumları"}
+            />
           </div>
         </div>
 
