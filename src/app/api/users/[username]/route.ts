@@ -17,6 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
       profilePublic: true,
       listsPublic: true,
       historyPublic: true,
+      commentsPublic: true,
       isPrivate: true,
       createdAt: true,
       _count: {
@@ -65,6 +66,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     profilePublic: user.profilePublic,
     listsPublic: user.listsPublic,
     historyPublic: user.historyPublic,
+    commentsPublic: user.commentsPublic,
     isPrivate: user.isPrivate,
     createdAt: user.createdAt,
     _count: {

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ path: 
     }
     if (transaction.status === "pending" || transaction.status === "processing") return NextResponse.json({ pending: true }, { headers: { "Cache-Control": "no-store" } });
     if (transaction.status !== "ready" || !transaction.userId) return fail(transaction.error ?? transaction.status, transaction.status === "consumed" ? 409 : 400);
-    const user = await prisma.user.findUnique({ where: { id: transaction.userId }, select: { id: true, email: true, username: true, displayName: true, avatarUrl: true, bio: true, role: true, profilePublic: true, listsPublic: true, historyPublic: true } });
+    const user = await prisma.user.findUnique({ where: { id: transaction.userId }, select: { id: true, email: true, username: true, displayName: true, avatarUrl: true, bio: true, role: true, profilePublic: true, listsPublic: true, historyPublic: true, commentsPublic: true } });
     if (!user) return fail("invalid_transaction", 403);
     const token = transaction.intent === "login" ? await signToken(user.id, user.role) : null;
     const consumed = await prisma.oAuthTransaction.updateMany({ where: { id: transaction.id, status: "ready", expiresAt: { gt: new Date() } }, data: { status: "consumed", verifier: null } });

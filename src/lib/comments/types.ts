@@ -29,6 +29,19 @@ export type CommentListData = {
 /** Admin moderasyon listesi — animeId, herkese açık yorum yanıtında yer almaz. */
 export type AdminCommentItem = CommentItem & { animeId: string };
 
+/** Profil listesinde yorumun hangi animeye ait olduğu da gösterilir. */
+export type ProfileCommentItem = CommentItem & { animeId: string };
+
+/**
+ * Profil yorumları yanıtı. `visible` false ise kullanıcı yorumlarını gizlemiş
+ * (veya profil gizli/kısıtlı) ve liste bilinçli olarak boş döner.
+ */
+export type ProfileCommentsData = {
+  comments: ProfileCommentItem[];
+  nextCursor: string | null;
+  visible: boolean;
+};
+
 export type RatingSummary = {
   /** Ortalama, 1 ondalık; oy yoksa null */
   average: number | null;

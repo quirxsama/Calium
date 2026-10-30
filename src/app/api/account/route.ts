@@ -65,6 +65,7 @@ export async function PATCH(req: NextRequest) {
   if (parsed.data.profilePublic !== undefined) data.profilePublic = parsed.data.profilePublic;
   if (parsed.data.listsPublic !== undefined) data.listsPublic = parsed.data.listsPublic;
   if (parsed.data.historyPublic !== undefined) data.historyPublic = parsed.data.historyPublic;
+  if (parsed.data.commentsPublic !== undefined) data.commentsPublic = parsed.data.commentsPublic;
   if (parsed.data.isPrivate !== undefined) data.isPrivate = parsed.data.isPrivate;
   if (parsed.data.dndEnabled !== undefined) data.dndEnabled = parsed.data.dndEnabled;
   if (parsed.data.allowOfflineInvites !== undefined) data.allowOfflineInvites = parsed.data.allowOfflineInvites;
@@ -83,6 +84,7 @@ export async function PATCH(req: NextRequest) {
       profilePublic: true,
       listsPublic: true,
       historyPublic: true,
+      commentsPublic: true,
       isPrivate: true,
       dndEnabled: true,
       allowOfflineInvites: true,

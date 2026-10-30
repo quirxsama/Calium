@@ -13,6 +13,7 @@ export interface AuthUser {
   profilePublic: boolean;
   listsPublic: boolean;
   historyPublic?: boolean;
+  commentsPublic?: boolean;
   isPrivate?: boolean;
   dndEnabled?: boolean;
   allowOfflineInvites?: boolean;

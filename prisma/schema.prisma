@@ -22,6 +22,7 @@ model User {
   profilePublic Boolean  @default(true)
   listsPublic   Boolean  @default(true)
   historyPublic Boolean  @default(true)
+  commentsPublic Boolean @default(true) // yorumlar profilde görünsün mü
   isPrivate     Boolean  @default(false) // gizli hesap — takip onayı gerekir
   dndEnabled    Boolean  @default(false) // rahatsız etme modu
   allowOfflineInvites Boolean @default(false) // arkadaşlar oda açmadan da davet gönderebilir

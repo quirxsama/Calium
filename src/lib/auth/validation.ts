@@ -22,6 +22,7 @@ export const updateProfileSchema = z.object({
   profilePublic: z.boolean().optional(),
   listsPublic: z.boolean().optional(),
   historyPublic: z.boolean().optional(),
+  commentsPublic: z.boolean().optional(),
   isPrivate: z.boolean().optional(),
   dndEnabled: z.boolean().optional(),
   allowOfflineInvites: z.boolean().optional(),

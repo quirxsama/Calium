@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       profilePublic: user.profilePublic,
       listsPublic: user.listsPublic,
       historyPublic: user.historyPublic,
+      commentsPublic: user.commentsPublic,
     },
   });
 

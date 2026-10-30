@@ -13,6 +13,7 @@ const SAFE_USER_SELECT = {
   profilePublic: true,
   listsPublic: true,
   historyPublic: true,
+  commentsPublic: true,
   isPrivate: true,
   dndEnabled: true,
   createdAt: true,

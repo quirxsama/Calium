@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import type { AdminCommentItem, CommentItem, CommentListData, RatingSummary } from "./types";
+import type { AdminCommentItem, CommentItem, CommentListData, ProfileCommentsData, RatingSummary } from "./types";
 
 const COMMENT_SELECT = {
   id: true,
@@ -54,6 +54,24 @@ export async function listComments(params: {
 }): Promise<CommentListData> {
   const { rows, nextCursor } = await fetchCommentRows(params.where, params.cursor, params.limit);
   return { comments: rows.map((row) => toCommentItem(row, params.viewer)), nextCursor };
+}
+
+/** Bir kullanıcının profilinde listelenecek yorumları (en yeni önce) döner. */
+export async function listCommentsByUser(params: {
+  userId: string;
+  cursor: string | null;
+  limit: number;
+  viewer: CommentViewer;
+}): Promise<Omit<ProfileCommentsData, "visible">> {
+  const { rows, nextCursor } = await fetchCommentRows(
+    { userId: params.userId, deleted: false },
+    params.cursor,
+    params.limit
+  );
+  return {
+    comments: rows.map((row) => ({ ...toCommentItem(row, params.viewer), animeId: row.animeId })),
+    nextCursor,
+  };
 }
 
 export async function listCommentsForAdmin(params: {

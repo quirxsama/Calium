@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { User, Calendar, List, Heart, Lock, Loader2, Users, Settings2, Activity, Radio, Clock, Play } from "lucide-react";
+import { User, Calendar, List, Heart, Lock, Loader2, Users, Settings2, Activity, Radio, Clock, Play, MessageSquare, ArrowRight } from "lucide-react";
 import { FollowButton, type FollowStatus } from "@/components/social/follow-button";
 import { usePresenceSubscribe } from "@/lib/realtime/presence";
 import { PresenceDot, activityText } from "@/components/social/presence-dot";
 import { AniziumImage } from "@/components/anime/anizium-image";
 import { formatDuration } from "@/lib/utils";
+import { type ProfileCommentItem } from "@/lib/comments/types";
+
+const COMMENTS_PAGE_SIZE = 10;
 
 interface ProfileData {
   id: string;
@@ -20,6 +23,7 @@ interface ProfileData {
   profilePublic: boolean;
   listsPublic?: boolean;
   historyPublic?: boolean;
+  commentsPublic?: boolean;
   isPrivate?: boolean;
   createdAt?: string;
   _count?: {
@@ -52,6 +56,19 @@ interface ListData {
   _count: { items: number; likes: number };
 }
 
+function formatRelativeDate(iso: string, now: number): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime()) || now <= 0) return "";
+  const diff = now - date.getTime();
+  if (diff < 60_000) return "az önce";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes} dk önce`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} sa önce`;
+  if (hours < 48) return "dün";
+  return date.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -62,11 +79,53 @@ export default function ProfilePage() {
   const [restricted, setRestricted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [comments, setComments] = useState<ProfileCommentItem[]>([]);
+  const [commentsVisible, setCommentsVisible] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentsNextCursor, setCommentsNextCursor] = useState<string | null>(null);
+  const [commentsError, setCommentsError] = useState(false);
+  const [commentsNow, setCommentsNow] = useState(0);
 
   const presence = usePresenceSubscribe(profile ? [profile.id] : []);
   const p = presence.get(profile?.id ?? "");
   const status = p?.status ?? "offline";
   const activity = activityText(p?.activity ?? null);
+
+  const loadComments = useCallback(
+    async (cursor?: string | null) => {
+      const append = Boolean(cursor);
+      setCommentsLoading(true);
+      setCommentsError(false);
+      try {
+        const params = new URLSearchParams({ limit: String(COMMENTS_PAGE_SIZE) });
+        if (cursor) params.set("cursor", cursor);
+        const res = await fetch(`/api/users/${encodeURIComponent(username)}/comments?${params.toString()}`);
+        const data = await res.json();
+        if (!data.success || !data.data) {
+          setCommentsError(true);
+          return;
+        }
+        const incoming: ProfileCommentItem[] = Array.isArray(data.data.comments) ? data.data.comments : [];
+        setCommentsVisible(data.data.visible !== false);
+        setCommentsNextCursor(data.data.nextCursor ?? null);
+        setCommentsNow(Date.now());
+        setComments((prev) => {
+          const merged = append ? [...prev, ...incoming] : incoming;
+          const seen = new Set<string>();
+          return merged.filter((comment) => {
+            if (seen.has(comment.id)) return false;
+            seen.add(comment.id);
+            return true;
+          });
+        });
+      } catch {
+        setCommentsError(true);
+      } finally {
+        setCommentsLoading(false);
+      }
+    },
+    [username],
+  );
 
   useEffect(() => {
     async function load() {
@@ -81,11 +140,19 @@ export default function ProfilePage() {
         setIsOwner(data.isOwner ?? false);
         setFollowStatus(data.followStatus ?? "not_following");
         setRestricted(data.restricted ?? false);
+        void loadComments();
       }
       setLoading(false);
     }
     load();
-  }, [username]);
+  }, [username, loadComments]);
+
+  // Göreli zamanları dakikada bir tazele.
+  useEffect(() => {
+    if (comments.length === 0) return;
+    const timer = window.setInterval(() => setCommentsNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [comments.length]);
 
   function handleFollowChange(next: FollowStatus) {
     setFollowStatus(next);
@@ -105,6 +172,7 @@ export default function ProfilePage() {
               setLists(d.lists ?? []);
               setRecentHistory(d.recentHistory ?? []);
               setRestricted(d.restricted ?? false);
+              void loadComments();
             }
           });
       }, 300);
@@ -334,6 +402,147 @@ export default function ProfilePage() {
               </div>
             </section>
           )}
+
+          {/* Comments */}
+          <section className="mb-8">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--foreground)]">
+                  <MessageSquare className="h-4 w-4 text-[var(--primary)]" />
+                  Yorumlar
+                </h2>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {isOwner
+                    ? "Profilinizde paylaştığınız seri ve bölüm yorumları."
+                    : "Bu kullanıcının paylaştığı seri ve bölüm yorumları."}
+                </p>
+              </div>
+              {isOwner && profile.commentsPublic === false && (
+                <span className="inline-flex w-fit items-center gap-1 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+                  <Lock className="h-3.5 w-3.5" />
+                  Başkalarına kapalı
+                </span>
+              )}
+            </div>
+
+            {isOwner && profile.commentsPublic === false && (
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-[var(--foreground)]">
+                    <Lock className="h-4 w-4 text-[var(--muted-foreground)]" />
+                    Yorumların şu anda gizli
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    Profilinde kimse göremiyor; Ayarlar &gt; Profil bölümünden açabilirsin.
+                  </p>
+                </div>
+                <Link
+                  href="/ayarlar?tab=profil"
+                  className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Ayarlara git
+                </Link>
+              </div>
+            )}
+
+            {commentsLoading && comments.length === 0 ? (
+              <div className="space-y-3">
+                {[0, 1].map((i) => (
+                  <div key={i} className="animate-pulse rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className="h-4 w-20 rounded-full bg-[var(--muted)]" />
+                      <div className="h-4 w-14 rounded-full bg-[var(--muted)]" />
+                    </div>
+                    <div className="h-3 w-full rounded bg-[var(--muted)]" />
+                    <div className="mt-2 h-3 w-2/3 rounded bg-[var(--muted)]" />
+                  </div>
+                ))}
+              </div>
+            ) : commentsError && comments.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-8 text-center">
+                <p className="text-sm text-[var(--muted-foreground)]">Yorumlar yüklenemedi.</p>
+                <button
+                  type="button"
+                  onClick={() => void loadComments()}
+                  className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+                >
+                  Tekrar dene
+                </button>
+              </div>
+            ) : !commentsVisible ? (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-8 text-center text-[var(--muted-foreground)]">
+                <Lock className="h-6 w-6" />
+                <p className="text-sm">Bu kullanıcı yorumlarını gizlemiş.</p>
+              </div>
+            ) : comments.length === 0 ? (
+              <p className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
+                Henüz yorum yapılmamış.
+              </p>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {comments.map((comment) => (
+                    <article
+                      key={comment.id}
+                      className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+                    >
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)]">
+                          <MessageSquare className="h-3 w-3" />
+                          {comment.episodeId ? "Bölüm yorumu" : "Seri yorumu"}
+                        </span>
+                        <time dateTime={comment.createdAt} className="text-[11px] text-[var(--muted-foreground)]">
+                          {formatRelativeDate(comment.createdAt, commentsNow)}
+                        </time>
+                      </div>
+                      <p className="whitespace-pre-wrap break-words text-sm text-[var(--foreground)]">
+                        {comment.body}
+                      </p>
+                      <div className="mt-3 flex justify-end border-t border-[var(--border)] pt-2.5">
+                        <Link
+                          href={`/anime/${encodeURIComponent(comment.animeId)}`}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-[var(--primary)] transition hover:underline"
+                        >
+                          Animeyi gör
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                {commentsError && (
+                  <div className="mt-3 flex flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-4 text-center">
+                    <p className="text-xs text-[var(--muted-foreground)]">Daha fazla yorum yüklenemedi.</p>
+                    <button
+                      type="button"
+                      onClick={() => void loadComments(commentsNextCursor)}
+                      className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+                    >
+                      Tekrar dene
+                    </button>
+                  </div>
+                )}
+                {commentsNextCursor && (
+                  <div className="mt-3 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => void loadComments(commentsNextCursor)}
+                      disabled={commentsLoading}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-50"
+                    >
+                      {commentsLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MessageSquare className="h-4 w-4" />
+                      )}
+                      Daha fazla yorum
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
 
           {/* Lists */}
           {lists.length > 0 && (

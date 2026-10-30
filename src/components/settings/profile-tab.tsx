@@ -15,6 +15,7 @@ export function ProfileTab() {
   const [profilePublic, setProfilePublic] = useState(user?.profilePublic ?? true);
   const [listsPublic, setListsPublic] = useState(user?.listsPublic ?? true);
   const [historyPublic, setHistoryPublic] = useState(user?.historyPublic ?? true);
+  const [commentsPublic, setCommentsPublic] = useState(user?.commentsPublic ?? true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [avatarPresets, setAvatarPresets] = useState<{ ID: string; name: string; link: string | null }[]>([]);
@@ -162,7 +163,7 @@ export function ProfileTab() {
     const res = await fetch("/api/account", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName, bio, avatarUrl, profilePublic, listsPublic, historyPublic }),
+      body: JSON.stringify({ displayName, bio, avatarUrl, profilePublic, listsPublic, historyPublic, commentsPublic }),
     });
     const data = await res.json();
     setLoading(false);
@@ -418,6 +419,14 @@ export function ProfileTab() {
             label="Son izlenenler herkese açık"
             description="Kapatırsanız profilinizdeki son 5 izleme kaydı sadece size görünür."
             iconOn={<Clock className="h-4 w-4" />}
+            iconOff={<EyeOff className="h-4 w-4" />}
+          />
+          <Toggle
+            checked={commentsPublic}
+            onChange={setCommentsPublic}
+            label="Yorumlar profilimde görünsün"
+            description="Kapatırsanız seri ve bölüm yorumlarınız profilinizde yalnızca size görünür."
+            iconOn={<Eye className="h-4 w-4" />}
             iconOff={<EyeOff className="h-4 w-4" />}
           />
         </div>
