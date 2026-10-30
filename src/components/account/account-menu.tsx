@@ -30,17 +30,17 @@ export function AccountMenu() {
 
   if (!user) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Link
           href="/giris"
-          className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3.5 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+          className="hidden sm:inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--card)] px-3.5 py-2 text-sm text-[var(--foreground)] transition hover:bg-[var(--muted)]"
         >
           <LogIn className="h-4 w-4" />
           Giriş
         </Link>
         <Link
           href="/kayit"
-          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3.5 py-2 text-sm font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--primary)] px-3.5 py-2 text-sm font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
         >
           <UserPlus className="h-4 w-4" />
           <span className="hidden sm:inline">Kayıt Ol</span>
@@ -53,7 +53,7 @@ export function AccountMenu() {
   const initials = (user.displayName || user.username).slice(0, 2).toUpperCase();
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative shrink-0" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--card)] transition hover:ring-2 hover:ring-[var(--primary)]/30"
