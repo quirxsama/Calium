@@ -5,6 +5,8 @@ const ALLOWED_ANIZIUM_HOSTS = [
   "anizium.com",
   "anizium.net",
   "anizium.org",
+  "aniziumserver.sbs",
+  "aniziumserver.site",
 ];
 
 export function isAniziumAssetUrl(value: string | null | undefined): value is string {
@@ -14,8 +16,7 @@ export function isAniziumAssetUrl(value: string | null | undefined): value is st
     const url = new URL(value);
     return (
       (url.protocol === "https:" || url.protocol === "http:") &&
-      (["p.aniziumserver.sbs", "a.aniziumserver.sbs", "a.aniziumserver.site"].includes(url.hostname) ||
-        ALLOWED_ANIZIUM_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)))
+      ALLOWED_ANIZIUM_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))
     );
   } catch {
     return false;

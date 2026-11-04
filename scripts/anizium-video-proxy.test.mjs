@@ -10,8 +10,10 @@ import ts from "typescript";
 import { NextRequest } from "next/server.js";
 
 const require = createRequire(import.meta.url);
-const video = "https://p.aniziumserver.sbs/312359/1/4/2160p.original.mp4";
-const proxiedVideo = "/api/anizium/asset?url=https%3A%2F%2Fp.aniziumserver.sbs%2F312359%2F1%2F4%2F2160p.original.mp4";
+const video = "https://x.aniziumserver.site/220542/3/5/2160p.original.mp4";
+const proxiedVideo = "/api/anizium/asset?url=https%3A%2F%2Fx.aniziumserver.site%2F220542%2F3%2F5%2F2160p.original.mp4";
+const videoHosts = ["p.aniziumserver.sbs", "a.aniziumserver.sbs", "a.aniziumserver.site", "x.aniziumserver.site", "next.aniziumserver.sbs", "next.aniziumserver.site", "aniziumserver.sbs", "aniziumserver.site"];
+const untrustedVideos = ["https://x.aniziumserver.site.evil.test/a.mp4", "https://evilaniziumserver.site/a.mp4", "https://evilaniziumserver.sbs/a.mp4", "https://aniziumserver.site@evil.test/a.mp4", "https://p.aniziumserver.sbs.evil.test/a.mp4", "https://evil.test/a.mp4", "http://127.0.0.1/a.mp4", "ftp://p.aniziumserver.sbs/a.mp4"];
 
 function load(file, overrides = {}, globals = {}) {
   const filename = resolve(file);
@@ -37,12 +39,12 @@ test("video CDN is proxied without widening the host boundary or double wrapping
   const assets = load("src/lib/anizium/asset-proxy.ts");
   assert.equal(assets.toAniziumAssetProxyUrl(video), proxiedVideo);
   assert.equal(assets.toAniziumAssetProxyUrl(proxiedVideo), proxiedVideo);
-  for (const host of ["a.aniziumserver.sbs", "a.aniziumserver.site"]) {
+  for (const host of videoHosts) {
     const url = `https://${host}/36243/1/1/480p.original.mp4`;
     assert.equal(assets.toAniziumAssetProxyUrl(url), `/api/anizium/asset?url=${encodeURIComponent(url)}`);
     assert.equal(assets.isAniziumAssetUrl(`https://${host}.evil.test/a.mp4`), false);
   }
-  for (const url of ["https://p.aniziumserver.sbs.evil.test/a.mp4", "https://evil.test/a.mp4", "http://127.0.0.1/a.mp4", "ftp://p.aniziumserver.sbs/a.mp4"]) {
+  for (const url of untrustedVideos) {
     assert.equal(assets.isAniziumAssetUrl(url), false);
   }
 });
@@ -87,7 +89,7 @@ test("asset API preserves partial video bodies and headers, rejects untrusted ho
   assert.equal(calls, 1);
 });
 
-for (const host of ["p.aniziumserver.sbs", "a.aniziumserver.sbs", "a.aniziumserver.site"]) {
+for (const host of videoHosts) {
   test(`standalone proxy streams ${host} ranges with official referer and stops upstream on disconnect`, async (t) => {
     const video = `https://${host}/36243/1/1/480p.original.mp4`;
     let server;
@@ -111,5 +113,10 @@ for (const host of ["p.aniziumserver.sbs", "a.aniziumserver.sbs", "a.aniziumserv
     assert.equal(response.headers.get("content-range"), "bytes 0-3/100");
     assert.equal(await response.text(), "test");
     assert.equal(upstreamSignal.aborted, true);
+    for (const url of untrustedVideos) {
+      const rejected = await fetch(`http://127.0.0.1:${server.address().port}/__asset?url=${encodeURIComponent(url)}`, { headers: { "x-proxy-key": "test-key" } });
+      assert.equal(rejected.status, 400);
+      await rejected.text();
+    }
   });
 }

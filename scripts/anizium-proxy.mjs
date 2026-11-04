@@ -24,9 +24,8 @@ const ALLOWED_ASSET_HOSTS = new Set([
   "anizium.com",
   "anizium.net",
   "anizium.org",
-  "p.aniziumserver.sbs",
-  "a.aniziumserver.sbs",
-  "a.aniziumserver.site",
+  "aniziumserver.sbs",
+  "aniziumserver.site",
 ]);
 
 const ASSET_CACHE_CONTROL =
@@ -62,7 +61,9 @@ function isAllowedAssetUrl(url) {
       url.hostname.endsWith(".anizium.co") ||
       url.hostname.endsWith(".anizium.com") ||
       url.hostname.endsWith(".anizium.net") ||
-      url.hostname.endsWith(".anizium.org"))
+      url.hostname.endsWith(".anizium.org") ||
+      url.hostname.endsWith(".aniziumserver.sbs") ||
+      url.hostname.endsWith(".aniziumserver.site"))
   );
 }
 
