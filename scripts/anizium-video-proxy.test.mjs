@@ -49,23 +49,25 @@ test("video CDN is proxied without widening the host boundary or double wrapping
   }
 });
 
-test("episode API proxies MP4 for every group while preserving HLS, external sources and metadata", async () => {
-  const raw = {
-    groups: [{ name: "Original", items: [{ link: video, quality: 2160, type: "video/mp4" }] },
-      { name: "Other", items: [{ link: "https://x.anizium.co/master.m3u8" }, { link: "https://other.test/video.mp4" }] }],
-    subtitles: [], content: { name: "Episode", opening: { start: "00:30" } },
-  };
-  const route = load("src/app/api/anizium/episode/route.ts", {
-    "./client": { aniziumFetch: async () => raw },
+for (const videoOrigin of [undefined, "https://video.calium.fun"]) {
+  test(`episode API proxies MP4 through ${videoOrigin ?? "same origin"} while preserving other sources and metadata`, async () => {
+    const raw = {
+      groups: [{ name: "Original", items: [{ link: video, quality: 2160, type: "video/mp4" }] },
+        { name: "Other", items: [{ link: "https://x.anizium.co/master.m3u8" }, { link: "https://other.test/video.mp4" }] }],
+      subtitles: [], content: { name: "Episode", opening: { start: "00:30" } },
+    };
+    const route = load("src/app/api/anizium/episode/route.ts", {
+      "./client": { aniziumFetch: async () => raw },
+    }, { process: { env: { ANIZIUM_VIDEO_ORIGIN: videoOrigin } } });
+    const response = await route.GET(new NextRequest("http://localhost/api/anizium/episode?animeId=test&season=1&episode=4"));
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(data.groups[0].items[0], { link: videoOrigin ? `${videoOrigin}${proxiedVideo}` : proxiedVideo, quality: 2160, type: "video/mp4" });
+    assert.deepEqual(data.groups[1].items.map((item) => item.link), raw.groups[1].items.map((item) => item.link));
+    assert.deepEqual(data.content, raw.content);
+    assert.equal(raw.groups[0].items[0].link, video);
   });
-  const response = await route.GET(new NextRequest("http://localhost/api/anizium/episode?animeId=test&season=1&episode=4"));
-  const data = await response.json();
-  assert.equal(response.status, 200);
-  assert.deepEqual(data.groups[0].items[0], { link: proxiedVideo, quality: 2160, type: "video/mp4" });
-  assert.deepEqual(data.groups[1].items.map((item) => item.link), raw.groups[1].items.map((item) => item.link));
-  assert.deepEqual(data.content, raw.content);
-  assert.equal(raw.groups[0].items[0].link, video);
-});
+}
 
 test("asset API preserves partial video bodies and headers, rejects untrusted hosts and forwards cancellation", async () => {
   let calls = 0;

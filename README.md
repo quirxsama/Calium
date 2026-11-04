@@ -177,6 +177,8 @@ ANIZIUM_WORKER_URL=""
 ANIZIUM_PROXY_KEY=""
 ```
 
+MP4 kaynakları için isteğe bağlı `ANIZIUM_VIDEO_ORIGIN="https://video.example.com"` ayarlanabilir. Boşsa aynı origin kullanılır. Ayrı host `/api/anizium/asset` yolunu sunmalı, HTTPS ve site origin'i için CORS sağlamalıdır. DNS-only kullanımı sunucu IP'sini açığa çıkarır; WARP upstream çıkışı değişmez.
+
 Yerel proxy scripti için:
 
 ```env
@@ -518,6 +520,8 @@ When Worker/proxy mode is enabled, the application sends upstream requests throu
 ANIZIUM_WORKER_URL=""
 ANIZIUM_PROXY_KEY=""
 ```
+
+Optionally set `ANIZIUM_VIDEO_ORIGIN="https://video.example.com"` for MP4 sources. Leave it empty for same-origin URLs. The separate host must serve `/api/anizium/asset` over HTTPS and allow CORS from the site origin. DNS-only hosting exposes the server IP; upstream WARP routing is unchanged.
 
 For the local proxy script:
 

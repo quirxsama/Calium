@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEpisodeSources } from "@/lib/anizium/endpoints";
-import { toAniziumAssetProxyUrl } from "@/lib/anizium/asset-proxy";
+import { toAbsoluteAniziumAssetProxyUrl, toAniziumAssetProxyUrl } from "@/lib/anizium/asset-proxy";
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -22,7 +22,11 @@ export async function GET(req: NextRequest) {
         items: group.items.map((item) => ({
           ...item,
           // shortcut: MP4 only; HLS requires playlist and segment URL rewriting.
-          link: /\.mp4(?:[?#]|$)/i.test(item.link) ? toAniziumAssetProxyUrl(item.link) : item.link,
+          link: /\.mp4(?:[?#]|$)/i.test(item.link)
+            ? process.env.ANIZIUM_VIDEO_ORIGIN
+              ? toAbsoluteAniziumAssetProxyUrl(item.link, process.env.ANIZIUM_VIDEO_ORIGIN)
+              : toAniziumAssetProxyUrl(item.link)
+            : item.link,
         })),
       })),
     });
