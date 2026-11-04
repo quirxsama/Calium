@@ -14,7 +14,8 @@ export function isAniziumAssetUrl(value: string | null | undefined): value is st
     const url = new URL(value);
     return (
       (url.protocol === "https:" || url.protocol === "http:") &&
-      ALLOWED_ANIZIUM_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))
+      (url.hostname === "p.aniziumserver.sbs" ||
+        ALLOWED_ANIZIUM_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)))
     );
   } catch {
     return false;
@@ -32,4 +33,3 @@ export function toAbsoluteAniziumAssetProxyUrl(value: string | null | undefined,
   if (proxied.startsWith("/")) return new URL(proxied, origin).toString();
   return proxied;
 }
-

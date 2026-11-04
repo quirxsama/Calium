@@ -24,6 +24,7 @@ const ALLOWED_ASSET_HOSTS = new Set([
   "anizium.com",
   "anizium.net",
   "anizium.org",
+  "p.aniziumserver.sbs",
 ]);
 
 const ASSET_CACHE_CONTROL =
@@ -105,6 +106,7 @@ async function proxyAsset(targetUrl, req, res) {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
+  res.on("close", () => controller.abort());
   try {
     const headers = buildAssetHeaders(req);
     if (req.headers.range) headers.range = req.headers.range;
@@ -134,8 +136,9 @@ async function proxyAsset(targetUrl, req, res) {
       res.end();
       return;
     }
-    Readable.fromWeb(upstream.body).pipe(res);
+    Readable.fromWeb(upstream.body).on("error", () => res.destroy()).pipe(res);
   } catch (e) {
+    if (res.destroyed) return;
     res.writeHead(502, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: false, error: e?.message || "Asset proxy failed" }));
   } finally {
