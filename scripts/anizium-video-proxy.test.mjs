@@ -37,6 +37,11 @@ test("video CDN is proxied without widening the host boundary or double wrapping
   const assets = load("src/lib/anizium/asset-proxy.ts");
   assert.equal(assets.toAniziumAssetProxyUrl(video), proxiedVideo);
   assert.equal(assets.toAniziumAssetProxyUrl(proxiedVideo), proxiedVideo);
+  for (const host of ["a.aniziumserver.sbs", "a.aniziumserver.site"]) {
+    const url = `https://${host}/36243/1/1/480p.original.mp4`;
+    assert.equal(assets.toAniziumAssetProxyUrl(url), `/api/anizium/asset?url=${encodeURIComponent(url)}`);
+    assert.equal(assets.isAniziumAssetUrl(`https://${host}.evil.test/a.mp4`), false);
+  }
   for (const url of ["https://p.aniziumserver.sbs.evil.test/a.mp4", "https://evil.test/a.mp4", "http://127.0.0.1/a.mp4", "ftp://p.aniziumserver.sbs/a.mp4"]) {
     assert.equal(assets.isAniziumAssetUrl(url), false);
   }
@@ -82,26 +87,29 @@ test("asset API preserves partial video bodies and headers, rejects untrusted ho
   assert.equal(calls, 1);
 });
 
-test("standalone proxy streams video ranges with official referer and stops upstream on disconnect", async (t) => {
-  let server;
-  let upstreamSignal;
-  load("scripts/anizium-proxy.mjs", {
-    http: { createServer: (...args) => (server = http.createServer(...args)) },
-  }, {
-    process: { env: { PORT: "0", PROXY_API_KEY: "test-key", ANIZIUM_CF_CONTROL: "test", ANIZIUM_USER_SESSION: "test" } },
-    fetch: async (url, options) => {
-      assert.equal(String(url), video);
-      assert.equal(options.headers.referer, "https://x.anizium.co/");
-      assert.equal(options.headers.range, "bytes=0-3");
-      upstreamSignal = options.signal;
-      return new Response("test", { status: 206, headers: { "content-type": "video/mp4", "content-range": "bytes 0-3/100", "content-length": "4" } });
-    },
+for (const host of ["p.aniziumserver.sbs", "a.aniziumserver.sbs", "a.aniziumserver.site"]) {
+  test(`standalone proxy streams ${host} ranges with official referer and stops upstream on disconnect`, async (t) => {
+    const video = `https://${host}/36243/1/1/480p.original.mp4`;
+    let server;
+    let upstreamSignal;
+    load("scripts/anizium-proxy.mjs", {
+      http: { createServer: (...args) => (server = http.createServer(...args)) },
+    }, {
+      process: { env: { PORT: "0", PROXY_API_KEY: "test-key", ANIZIUM_CF_CONTROL: "test", ANIZIUM_USER_SESSION: "test" } },
+      fetch: async (url, options) => {
+        assert.equal(String(url), video);
+        assert.equal(options.headers.referer, "https://x.anizium.co/");
+        assert.equal(options.headers.range, "bytes=0-3");
+        upstreamSignal = options.signal;
+        return new Response("test", { status: 206, headers: { "content-type": "video/mp4", "content-range": "bytes 0-3/100", "content-length": "4" } });
+      },
+    });
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    await once(server, "listening");
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/__asset?url=${encodeURIComponent(video)}`, { headers: { "x-proxy-key": "test-key", range: "bytes=0-3" } });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get("content-range"), "bytes 0-3/100");
+    assert.equal(await response.text(), "test");
+    assert.equal(upstreamSignal.aborted, true);
   });
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  await once(server, "listening");
-  const response = await fetch(`http://127.0.0.1:${server.address().port}/__asset?url=${encodeURIComponent(video)}`, { headers: { "x-proxy-key": "test-key", range: "bytes=0-3" } });
-  assert.equal(response.status, 206);
-  assert.equal(response.headers.get("content-range"), "bytes 0-3/100");
-  assert.equal(await response.text(), "test");
-  assert.equal(upstreamSignal.aborted, true);
-});
+}

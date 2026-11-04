@@ -25,6 +25,8 @@ const ALLOWED_ASSET_HOSTS = new Set([
   "anizium.net",
   "anizium.org",
   "p.aniziumserver.sbs",
+  "a.aniziumserver.sbs",
+  "a.aniziumserver.site",
 ]);
 
 const ASSET_CACHE_CONTROL =
