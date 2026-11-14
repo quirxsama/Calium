@@ -1,0 +1,1 @@
+ALTER TABLE "Preference" ADD COLUMN "holdSpaceToSpeedUp" BOOLEAN NOT NULL DEFAULT true;

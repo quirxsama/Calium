@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth/context";
 import {
   MediaPlayer,
   MediaProvider,
@@ -31,12 +32,21 @@ import { cn } from "@/lib/utils";
 import { MobileSeekOverlay } from "./mobile-seek-overlay";
 import { GestureHint } from "./gesture-hint";
 import { IntroSongBadge, type IntroSongData } from "./intro-song-badge";
+import {
+  PLAYER_PREFS_STORAGE_KEY,
+  PLAYER_PREFS_CHANGE_EVENT,
+  readPlayerPreferences,
+  savePlayerPreferences,
+  normalizePlayerPreferences,
+  getPreferredQualityIndex,
+  parseQualityHeight,
+  type PreferredDubLanguage,
+  type PreferredQuality,
+} from "@/lib/storage/player-preferences";
+import { bindSpaceSpeedBoost } from "./space-speed-boost";
+
 const AUDIO_STORAGE_KEY = "anizium-audio-track";
 const VOLUME_STORAGE_KEY = "anizium-player-volume";
-const PLAYER_PREFS_STORAGE_KEY = "calium:player-prefs";
-
-type PreferredDubLanguage = "en" | "tr" | "ja";
-type PreferredQuality = "auto" | "2160p" | "1440p" | "1080p" | "720p" | "480p";
 
 type Props = {
   groups: SourceGroup[];
@@ -122,20 +132,6 @@ function getInitialAudioTrackIndex(audioTracks: AudioTrack[], preferred: Preferr
   }
 
   return bestScore > 0 ? bestIndex : 0;
-}
-
-function getInitialQualityIndex(variants: QualityVariant[], preferred: PreferredQuality): number {
-  if (variants.length === 0) return 0;
-  if (preferred === "auto") return 0;
-
-  const target = Number(preferred.replace("p", ""));
-  const exactMatch = variants.findIndex((variant) => variant.quality === target);
-  if (exactMatch >= 0) return exactMatch;
-
-  const lowerOrEqual = variants.findIndex((variant) => (variant.quality ?? 0) <= target);
-  if (lowerOrEqual >= 0) return lowerOrEqual;
-
-  return variants.length - 1;
 }
 
 function srtToVtt(srt: string): string {
@@ -245,10 +241,7 @@ export function AnimePlayer({
           .filter((s) => !!s.link)
           .map((s) => ({
             url: s.link,
-            quality:
-              typeof s.quality === "number"
-                ? s.quality
-                : Number(s.quality) || undefined,
+            quality: parseQualityHeight(s.quality),
             type: s.type ?? g.type ?? undefined,
           }))
           .sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0));
@@ -261,58 +254,18 @@ export function AnimePlayer({
       .filter((t) => t.variants.length > 0);
   }, [groups]);
 
-  const [playerPrefs, setPlayerPrefs] = useState<{
-    autoPlay: boolean;
-    autoSkipIntro: boolean;
-    defaultQuality: PreferredQuality;
-    defaultDubLanguage: PreferredDubLanguage;
-  }>(() => {
-    if (typeof window === "undefined") {
-      return { autoPlay: true, autoSkipIntro: false, defaultQuality: "auto", defaultDubLanguage: "ja" };
-    }
-
-    try {
-      const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
-      if (!stored) {
-        return { autoPlay: true, autoSkipIntro: false, defaultQuality: "auto", defaultDubLanguage: "ja" };
-      }
-
-      const parsed = JSON.parse(stored) as Record<string, unknown>;
-      return {
-        autoPlay: typeof parsed.autoPlay === "boolean" ? parsed.autoPlay : true,
-        autoSkipIntro: typeof parsed.autoSkipIntro === "boolean" ? parsed.autoSkipIntro : false,
-        defaultQuality: parsed.defaultQuality === "2160p" || parsed.defaultQuality === "1440p" || parsed.defaultQuality === "1080p" || parsed.defaultQuality === "720p" || parsed.defaultQuality === "480p" || parsed.defaultQuality === "auto"
-          ? parsed.defaultQuality
-          : "auto",
-        defaultDubLanguage: parsed.defaultDubLanguage === "en" || parsed.defaultDubLanguage === "tr" || parsed.defaultDubLanguage === "ja"
-          ? parsed.defaultDubLanguage
-          : "ja",
-      };
-    } catch {
-      return { autoPlay: true, autoSkipIntro: false, defaultQuality: "auto", defaultDubLanguage: "ja" };
-    }
-  });
-
-  const [selectedAudio, setSelectedAudio] = useState(() => getInitialAudioTrackIndex(audioTracks, playerPrefs.defaultDubLanguage));
-  const [selectedQualityIdx, setSelectedQualityIdx] = useState(() => {
-    const initialTrack = audioTracks[getInitialAudioTrackIndex(audioTracks, playerPrefs.defaultDubLanguage)];
-    return getInitialQualityIndex(initialTrack?.variants ?? [], playerPrefs.defaultQuality);
-  });
+  const { user } = useAuth();
+  const [playerPrefs, setPlayerPrefs] = useState(readPlayerPreferences);
+  const [spaceSpeedBoost, setSpaceSpeedBoost] = useState(false);
+  const [selectedAudio, setSelectedAudio] = useState<number | null>(null);
+  const [selectedQuality, setSelectedQuality] = useState<{ url: string; preference: PreferredQuality } | null>(null);
   const [volume, setVolume] = useState(() => {
     if (typeof window === "undefined") return 1;
     const saved = localStorage.getItem(VOLUME_STORAGE_KEY);
     return saved ? Number(saved) : 1;
   });
   const activeAudio = useMemo(() => {
-    if (selectedAudio >= 0 && selectedAudio < audioTracks.length) return selectedAudio;
-
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(AUDIO_STORAGE_KEY);
-      const savedIndex = saved == null ? Number.NaN : Number(saved);
-      if (Number.isInteger(savedIndex) && savedIndex >= 0 && savedIndex < audioTracks.length) {
-        return savedIndex;
-      }
-    }
+    if (selectedAudio != null && selectedAudio >= 0 && selectedAudio < audioTracks.length) return selectedAudio;
 
     return getInitialAudioTrackIndex(audioTracks, playerPrefs.defaultDubLanguage);
   }, [audioTracks, playerPrefs.defaultDubLanguage, selectedAudio]);
@@ -321,9 +274,12 @@ export function AnimePlayer({
   const activeIdx = useMemo(() => {
     const variants = currentTrack?.variants ?? [];
     if (variants.length === 0) return 0;
-    if (selectedQualityIdx >= 0 && selectedQualityIdx < variants.length) return selectedQualityIdx;
-    return getInitialQualityIndex(variants, playerPrefs.defaultQuality);
-  }, [currentTrack, playerPrefs.defaultQuality, selectedQualityIdx]);
+    const manualIndex = selectedQuality?.preference === playerPrefs.defaultQuality
+      ? variants.findIndex((variant) => variant.url === selectedQuality.url)
+      : -1;
+    if (manualIndex >= 0) return manualIndex;
+    return getPreferredQualityIndex(variants, playerPrefs.defaultQuality);
+  }, [currentTrack, playerPrefs.defaultQuality, selectedQuality]);
   const active = currentTrack?.variants[activeIdx];
   const resumeFromRef = useRef<number | null>(null);
   const { settings, update: updateCaption, reset: resetCaption } = useCaptionSettings();
@@ -360,32 +316,78 @@ export function AnimePlayer({
     };
   }, [subtitles]);
 
-  // Resume handling — also preserves time on quality switches.
   useEffect(() => {
     const syncPrefs = () => {
-      try {
-        const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
-        if (!stored) return;
-        const parsed = JSON.parse(stored) as Record<string, unknown>;
-        setPlayerPrefs({
-          autoPlay: typeof parsed.autoPlay === "boolean" ? parsed.autoPlay : true,
-          autoSkipIntro: typeof parsed.autoSkipIntro === "boolean" ? parsed.autoSkipIntro : false,
-          defaultQuality: parsed.defaultQuality === "2160p" || parsed.defaultQuality === "1440p" || parsed.defaultQuality === "1080p" || parsed.defaultQuality === "720p" || parsed.defaultQuality === "480p" || parsed.defaultQuality === "auto"
-            ? parsed.defaultQuality
-            : "auto",
-          defaultDubLanguage: parsed.defaultDubLanguage === "en" || parsed.defaultDubLanguage === "tr" || parsed.defaultDubLanguage === "ja"
-            ? parsed.defaultDubLanguage
-            : "ja",
-        });
-      } catch {
-        // ignore invalid storage
-      }
+      const p = playerRef.current;
+      if (p && p.currentTime > 0) resumeFromRef.current = p.currentTime;
+      setPlayerPrefs(readPlayerPreferences());
     };
-
     syncPrefs();
     window.addEventListener("storage", syncPrefs);
-    return () => window.removeEventListener("storage", syncPrefs);
+    window.addEventListener(PLAYER_PREFS_CHANGE_EVENT, syncPrefs);
+    return () => {
+      window.removeEventListener("storage", syncPrefs);
+      window.removeEventListener(PLAYER_PREFS_CHANGE_EVENT, syncPrefs);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    // Playback is local-first; settings saves already update this cache and the account.
+    try {
+      if (localStorage.getItem(PLAYER_PREFS_STORAGE_KEY)) return;
+    } catch { return; }
+    let cancelled = false;
+    let locallyChanged = false;
+    const markChanged = () => { locallyChanged = true; };
+    window.addEventListener(PLAYER_PREFS_CHANGE_EVENT, markChanged);
+    window.addEventListener("storage", markChanged);
+    void fetch("/api/preferences", { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (!cancelled && !locallyChanged && data?.preferences) {
+          savePlayerPreferences(normalizePlayerPreferences(data.preferences));
+        }
+      }).catch(() => {});
+    return () => {
+      cancelled = true;
+      window.removeEventListener(PLAYER_PREFS_CHANGE_EVENT, markChanged);
+      window.removeEventListener("storage", markChanged);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p?.el) return;
+    return bindSpaceSpeedBoost(p.el, p, playerPrefs.holdSpaceToSpeedUp, setSpaceSpeedBoost);
+  }, [active?.url, playerPrefs.holdSpaceToSpeedUp]);
+
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    let applied = false;
+    const applyQuality = () => {
+      const qualities = p.qualities.toArray();
+      if (applied || !p.state.canPlay || qualities.length === 0 || p.qualities.readonly) return;
+      applied = true;
+      if (playerPrefs.defaultQuality === "auto") {
+        p.qualities.autoSelect();
+      } else {
+        const index = getPreferredQualityIndex(qualities.map((quality) => ({ quality: quality.height })), playerPrefs.defaultQuality);
+        qualities[index].selected = true;
+      }
+    };
+    const resetQuality = () => { applied = false; };
+    p.addEventListener("source-change", resetQuality);
+    p.addEventListener("can-play", applyQuality);
+    // Already-loaded sources also need to react to a changed preference.
+    const timer = window.setTimeout(applyQuality, 0);
+    return () => {
+      window.clearTimeout(timer);
+      p.removeEventListener("source-change", resetQuality);
+      p.removeEventListener("can-play", applyQuality);
+    };
+  }, [active?.url, playerPrefs.defaultQuality]);
 
   useEffect(() => {
     seededRef.current = false;
@@ -566,21 +568,16 @@ export function AnimePlayer({
     cancelOutroAutoAdvance();
     const p = playerRef.current;
     if (p) resumeFromRef.current = p.currentTime;
-    setSelectedQualityIdx(idx);
     const chosenVariant = currentTrack?.variants[idx];
-    if (chosenVariant?.quality) {
-      try {
-        const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
-        const parsed = stored ? JSON.parse(stored) : {};
-        parsed.defaultQuality = chosenVariant.quality;
-        localStorage.setItem(PLAYER_PREFS_STORAGE_KEY, JSON.stringify(parsed));
-        fetch("/api/preferences", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ defaultQuality: chosenVariant.quality }),
-        }).catch(() => {});
-      } catch {}
-    }
+    if (!chosenVariant) return;
+    const preferred = normalizePlayerPreferences({ defaultQuality: chosenVariant.quality }).defaultQuality;
+    setSelectedQuality({ url: chosenVariant.url, preference: preferred });
+    setPlayerPrefs(savePlayerPreferences({ defaultQuality: preferred }));
+    void fetch("/api/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultQuality: preferred }),
+    }).catch(() => {});
   }
 
   function changeAudio(idx: number) {
@@ -589,22 +586,13 @@ export function AnimePlayer({
     const p = playerRef.current;
     if (p) resumeFromRef.current = p.currentTime;
     const nextTrack = audioTracks[idx];
-    const currentQ = currentTrack?.variants[activeIdx]?.quality;
-    let nextQIdx = 0;
-    if (nextTrack && currentQ != null) {
-      const match = nextTrack.variants.findIndex((v) => v.quality === currentQ);
-      if (match >= 0) nextQIdx = match;
-    }
     localStorage.setItem(AUDIO_STORAGE_KEY, String(idx));
     setSelectedAudio(idx);
-    setSelectedQualityIdx(nextQIdx);
+    setSelectedQuality(null);
     if (nextTrack) {
       const lang = isTurkish(nextTrack.label) ? "tr" : isEnglish(nextTrack.label) ? "en" : "ja";
       try {
-        const stored = localStorage.getItem(PLAYER_PREFS_STORAGE_KEY);
-        const parsed = stored ? JSON.parse(stored) : {};
-        parsed.defaultDubLanguage = lang;
-        localStorage.setItem(PLAYER_PREFS_STORAGE_KEY, JSON.stringify(parsed));
+        setPlayerPrefs(savePlayerPreferences({ defaultDubLanguage: lang }));
         fetch("/api/preferences", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1140,6 +1128,11 @@ export function AnimePlayer({
               </span>
             </span>
           </button>
+        )}
+        {spaceSpeedBoost && (
+          <div role="status" className="pointer-events-none absolute inset-x-0 top-5 z-50 flex justify-center">
+            <span className="rounded-full bg-black/65 px-4 py-2 text-sm font-semibold text-white">2× hız</span>
+          </div>
         )}
         <MobileSeekOverlay
           playerRef={playerRef}

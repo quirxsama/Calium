@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizePlayerPreferences, readPlayerPreferences, savePlayerPreferences } from "@/lib/storage/player-preferences";
 
 const DUB_LANGUAGES = [
   { value: "en", label: "İngilizce" },
@@ -22,8 +23,10 @@ const QUALITIES = [
 export function PlayerTab() {
   const [autoPlay, setAutoPlay] = useState(true);
   const [autoSkipIntro, setAutoSkipIntro] = useState(false);
+  const [holdSpaceToSpeedUp, setHoldSpaceToSpeedUp] = useState(true);
   const [defaultQuality, setDefaultQuality] = useState("auto");
   const [defaultDubLanguage, setDefaultDubLanguage] = useState("ja");
+  const editedRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -31,44 +34,26 @@ export function PlayerTab() {
     let cancelled = false;
 
     const hydrate = async () => {
-      const stored = localStorage.getItem("calium:player-prefs");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (!cancelled) {
-            queueMicrotask(() => {
-              if (typeof parsed.autoPlay === "boolean") setAutoPlay(parsed.autoPlay);
-              if (typeof parsed.autoSkipIntro === "boolean") setAutoSkipIntro(parsed.autoSkipIntro);
-              if (typeof parsed.defaultQuality === "string") setDefaultQuality(parsed.defaultQuality);
-              if (typeof parsed.defaultDubLanguage === "string") setDefaultDubLanguage(parsed.defaultDubLanguage);
-            });
-          }
-        } catch {
-          // ignore broken local storage
-        }
-      }
+      const applyPrefs = (preferences: unknown) => {
+        const prefs = normalizePlayerPreferences(preferences);
+        setAutoPlay(prefs.autoPlay);
+        setAutoSkipIntro(prefs.autoSkipIntro);
+        setHoldSpaceToSpeedUp(prefs.holdSpaceToSpeedUp);
+        setDefaultQuality(prefs.defaultQuality);
+        setDefaultDubLanguage(prefs.defaultDubLanguage);
+      };
+      applyPrefs(readPlayerPreferences());
 
       try {
         const res = await fetch("/api/preferences", { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         const preferences = data?.preferences;
-        if (cancelled || !preferences) return;
+        if (cancelled || editedRef.current || !preferences) return;
 
-        const nextPrefs = {
-          autoPlay: typeof preferences.autoPlay === "boolean" ? preferences.autoPlay : true,
-          autoSkipIntro: typeof preferences.autoSkipIntro === "boolean" ? preferences.autoSkipIntro : false,
-          defaultQuality: typeof preferences.defaultQuality === "string" ? preferences.defaultQuality : "auto",
-          defaultDubLanguage: typeof preferences.defaultDubLanguage === "string" ? preferences.defaultDubLanguage : "ja",
-        };
-
-        queueMicrotask(() => {
-          setAutoPlay(nextPrefs.autoPlay);
-          setAutoSkipIntro(nextPrefs.autoSkipIntro);
-          setDefaultQuality(nextPrefs.defaultQuality);
-          setDefaultDubLanguage(nextPrefs.defaultDubLanguage);
-        });
-        localStorage.setItem("calium:player-prefs", JSON.stringify(nextPrefs));
+        const nextPrefs = normalizePlayerPreferences(preferences);
+        applyPrefs(nextPrefs);
+        savePlayerPreferences(nextPrefs);
       } catch {
         // sync best-effort
       }
@@ -82,22 +67,25 @@ export function PlayerTab() {
   }, []);
 
   async function handleSave() {
+    editedRef.current = true;
     setLoading(true);
     setMessage(null);
 
-    const prefs = { autoPlay, autoSkipIntro, defaultQuality, defaultDubLanguage };
-    localStorage.setItem("calium:player-prefs", JSON.stringify(prefs));
+    const prefs = savePlayerPreferences(normalizePlayerPreferences({ autoPlay, autoSkipIntro, holdSpaceToSpeedUp, defaultQuality, defaultDubLanguage }));
 
     try {
-      await fetch("/api/preferences", {
+      const res = await fetch("/api/preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(prefs),
       });
-    } catch { /* sync best-effort */ }
-
-    setLoading(false);
-    setMessage({ type: "success", text: "Oynatıcı ayarları kaydedildi." });
+      if (!res.ok) throw new Error("Preference sync failed");
+      setMessage({ type: "success", text: "Oynatıcı ayarları kaydedildi." });
+    } catch {
+      setMessage({ type: "error", text: "Ayarlar bu cihazda kaydedildi; hesabınızla eşitlenemedi." });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -111,7 +99,7 @@ export function PlayerTab() {
         </div>
       )}
 
-      <div className="max-w-lg space-y-6">
+      <div className="max-w-lg space-y-6" onClickCapture={() => { editedRef.current = true; }}>
         <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
           <div>
             <p className="text-sm font-medium text-[var(--foreground)]">Otomatik Oynat</p>
@@ -150,6 +138,30 @@ export function PlayerTab() {
             <div className={cn(
               "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
               autoSkipIntro ? "translate-x-4" : "translate-x-0.5"
+            )} />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <div>
+            <p id="space-speed-label" className="text-sm font-medium text-[var(--foreground)]">Space ile 2× Hız</p>
+            <p id="space-speed-description" className="text-xs text-[var(--muted-foreground)]">Space tuşunu basılı tutarken 2× hızda izle. Kısa basış videoyu durdurur veya devam ettirir.</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={holdSpaceToSpeedUp}
+            aria-labelledby="space-speed-label"
+            aria-describedby="space-speed-description"
+            onClick={() => setHoldSpaceToSpeedUp((value) => !value)}
+            className={cn(
+              "relative h-6 w-10 shrink-0 rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--primary)]",
+              holdSpaceToSpeedUp ? "bg-[var(--primary)]" : "bg-[var(--muted)]"
+            )}
+          >
+            <span className={cn(
+              "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+              holdSpaceToSpeedUp ? "translate-x-4" : "translate-x-0.5"
             )} />
           </button>
         </div>
