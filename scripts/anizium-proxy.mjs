@@ -31,6 +31,15 @@ const ALLOWED_ASSET_HOSTS = new Set([
 const ASSET_CACHE_CONTROL =
   process.env.ANIZIUM_ASSET_CACHE_CONTROL || "public, max-age=86400, stale-while-revalidate=604800";
 
+const ASSET_HEADER_TIMEOUT_MS = positiveInt(process.env.ANIZIUM_ASSET_HEADER_TIMEOUT_MS, 20_000);
+const ASSET_IDLE_TIMEOUT_MS = positiveInt(process.env.ANIZIUM_ASSET_IDLE_TIMEOUT_MS, 30_000);
+const LOG_REQUESTS = process.env.ANIZIUM_PROXY_LOG_REQUESTS === "1";
+
+function positiveInt(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
 if (!CF_CONTROL || !USER_SESSION) {
   throw new Error("ANIZIUM_CF_CONTROL ve ANIZIUM_USER_SESSION env değişkenleri zorunlu.");
 }
@@ -101,15 +110,40 @@ function inferContentType(pathname) {
 }
 
 async function proxyAsset(targetUrl, req, res) {
+  const startedAt = Date.now();
+
   if (!isAllowedAssetUrl(targetUrl)) {
     res.writeHead(400, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: false, error: "Invalid asset url" }));
     return;
   }
 
+  if (LOG_REQUESTS) {
+    res.on("finish", () => {
+      console.log("[anizium-proxy] asset", {
+        host: targetUrl.hostname,
+        path: targetUrl.pathname,
+        status: res.statusCode,
+        ms: Date.now() - startedAt,
+      });
+    });
+  }
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
-  res.on("close", () => controller.abort());
+  let headerTimedOut = false;
+  let clientAborted = false;
+  let idleTimer;
+  const headerTimer = setTimeout(() => {
+    headerTimedOut = true;
+    controller.abort();
+  }, ASSET_HEADER_TIMEOUT_MS);
+
+  res.on("close", () => {
+    clientAborted = !res.writableEnded;
+    clearTimeout(idleTimer);
+    controller.abort();
+  });
+
   try {
     const headers = buildAssetHeaders(req);
     if (req.headers.range) headers.range = req.headers.range;
@@ -117,10 +151,20 @@ async function proxyAsset(targetUrl, req, res) {
       headers,
       signal: controller.signal,
     });
+    clearTimeout(headerTimer);
 
     if (!upstream.ok) {
-      res.writeHead(upstream.status, { "Content-Type": "application/json" });
+      await upstream.body?.cancel().catch(() => {});
+      const errorHeaders = { "Content-Type": "application/json" };
+      if (upstream.status === 429) errorHeaders["Retry-After"] = "30";
+      res.writeHead(upstream.status, errorHeaders);
       res.end(JSON.stringify({ success: false, error: `HTTP ${upstream.status}` }));
+      console.error("[anizium-proxy] asset upstream error", {
+        host: targetUrl.hostname,
+        path: targetUrl.pathname,
+        status: upstream.status,
+        ms: Date.now() - startedAt,
+      });
       return;
     }
 
@@ -139,13 +183,60 @@ async function proxyAsset(targetUrl, req, res) {
       res.end();
       return;
     }
-    Readable.fromWeb(upstream.body).on("error", () => res.destroy()).pipe(res);
+
+    const body = Readable.fromWeb(upstream.body);
+    const armIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (res.writableNeedDrain) {
+          armIdleTimer();
+          return;
+        }
+        console.error("[anizium-proxy] asset body idle timeout", {
+          host: targetUrl.hostname,
+          path: targetUrl.pathname,
+          timeoutMs: ASSET_IDLE_TIMEOUT_MS,
+        });
+        controller.abort();
+        body.destroy(new Error("Upstream body idle timeout"));
+        if (!res.destroyed) res.destroy();
+      }, ASSET_IDLE_TIMEOUT_MS);
+    };
+
+    body.on("end", () => clearTimeout(idleTimer));
+    body.on("error", (error) => {
+      clearTimeout(idleTimer);
+      if (!res.destroyed) res.destroy(error);
+    });
+    armIdleTimer();
+    body.pipe(res);
+    body.on("data", armIdleTimer);
   } catch (e) {
-    if (res.destroyed) return;
-    res.writeHead(502, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ success: false, error: e?.message || "Asset proxy failed" }));
+    clearTimeout(headerTimer);
+    clearTimeout(idleTimer);
+    if (res.destroyed || clientAborted) return;
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+
+    const timeout = headerTimedOut;
+    const status = timeout ? 504 : 502;
+    const message = timeout ? "Upstream timeout" : e?.message || "Asset proxy failed";
+    res.writeHead(status, {
+      "Content-Type": "application/json",
+      ...(timeout ? { "Retry-After": "5" } : {}),
+    });
+    res.end(JSON.stringify({ success: false, error: message }));
+    console.error("[anizium-proxy] asset failed", {
+      host: targetUrl.hostname,
+      path: targetUrl.pathname,
+      status,
+      ms: Date.now() - startedAt,
+      error: e?.message || String(e),
+    });
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(headerTimer);
   }
 }
 
@@ -175,7 +266,15 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ success: false, error: "url gerekli" }));
       return;
     }
-    await proxyAsset(new URL(rawUrl), req, res);
+    let assetUrl;
+    try {
+      assetUrl = new URL(rawUrl);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: "Invalid asset url" }));
+      return;
+    }
+    await proxyAsset(assetUrl, req, res);
     return;
   }
 

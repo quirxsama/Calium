@@ -38,6 +38,20 @@ export type AniziumAssetFetchOpts = AniziumFetchOpts & {
   headers?: HeadersInit;
 };
 
+export type AniziumAssetErrorKind = "invalid" | "timeout" | "aborted" | "upstream" | "network";
+
+export class AniziumAssetError extends Error {
+  readonly kind: AniziumAssetErrorKind;
+  readonly status?: number;
+
+  constructor(kind: AniziumAssetErrorKind, message: string, status?: number) {
+    super(message);
+    this.name = "AniziumAssetError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
 function promptRecoveryProbe(error: unknown, signal?: AbortSignal) {
   if (signal?.aborted) return;
   const message = error instanceof Error ? error.message : "";
@@ -81,9 +95,8 @@ async function fetchAnizium<T = unknown>(
     ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ?? controller.signal
     : (signals[0] ?? controller.signal);
   const to = setTimeout(() => controller.abort(), 12_000);
-  let res: Response;
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       headers,
       signal: combinedSignal,
       next:
@@ -92,8 +105,19 @@ async function fetchAnizium<T = unknown>(
           : undefined,
       cache: opts.revalidate === 0 ? "no-store" : undefined,
     });
+
+    if (!res.ok) {
+      console.warn("[anizium] upstream non-ok response", {
+        path,
+        url,
+        status: res.status,
+      });
+      throw new Error(`HTTP ${res.status} @ ${url}`);
+    }
+
+    return (await res.json()) as T;
   } catch (e) {
-    console.warn("[anizium] upstream fetch failed", {
+    console.warn("[anizium] upstream request failed", {
       path,
       url,
       error: e instanceof Error ? e.message : String(e),
@@ -102,18 +126,6 @@ async function fetchAnizium<T = unknown>(
   } finally {
     clearTimeout(to);
   }
-
-  if (!res.ok) {
-    console.warn("[anizium] upstream non-ok response", {
-      path,
-      url,
-      status: res.status,
-    });
-    throw new Error(`HTTP ${res.status} @ ${url}`);
-  }
-
-  const data = (await res.json()) as T;
-  return data;
 }
 
 async function aniziumFetchViaWorker<T = unknown>(
@@ -130,11 +142,10 @@ async function aniziumFetchViaWorker<T = unknown>(
       : (signals[0] ?? controller.signal);
   const to = setTimeout(() => controller.abort(), 15_000);
 
-  let res: Response;
   try {
     const proxyHeaders: Record<string, string> = {};
     if (PROXY_KEY) proxyHeaders["x-proxy-key"] = PROXY_KEY;
-    res = await fetch(url, {
+    const res = await fetch(url, {
       headers: proxyHeaders,
       signal: combinedSignal,
       next:
@@ -143,22 +154,21 @@ async function aniziumFetchViaWorker<T = unknown>(
           : undefined,
       cache: opts.revalidate === 0 ? "no-store" : undefined,
     });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      console.warn("[anizium] worker non-ok response", {
+        path,
+        status: res.status,
+        error: body.error,
+      });
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+
+    return (await res.json()) as T;
   } finally {
     clearTimeout(to);
   }
-
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    console.warn("[anizium] worker non-ok response", {
-      path,
-      status: res.status,
-      error: body.error,
-    });
-    throw new Error(body.error || `HTTP ${res.status}`);
-  }
-
-  const data = (await res.json()) as T;
-  return data;
 }
 
 export async function aniziumAssetFetch(
@@ -178,7 +188,7 @@ async function fetchAniziumAsset(
   opts: AniziumAssetFetchOpts = {}
 ): Promise<Response> {
   if (!isAniziumAssetUrl(assetUrl)) {
-    throw new Error("Geçersiz Anizium asset URL'i");
+    throw new AniziumAssetError("invalid", "Geçersiz Anizium asset URL'i");
   }
 
   if (WORKER_URL) {
@@ -192,22 +202,41 @@ async function fetchAniziumAsset(
       ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ??
         controller.signal
       : (signals[0] ?? controller.signal);
-  const to = setTimeout(() => controller.abort(), 20_000);
+  let timedOut = false;
+  const to = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 20_000);
+
+  const headers = new Headers(buildHeaders());
+  headers.set("accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,text/vtt,text/plain,*/*;q=0.8");
+  headers.set("sec-fetch-dest", "image");
+  if (opts.headers) {
+    new Headers(opts.headers).forEach((value, key) => headers.set(key, value));
+  }
 
   try {
-    const headers = new Headers(buildHeaders());
-    headers.set("accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,text/vtt,text/plain,*/*;q=0.8");
-    headers.set("sec-fetch-dest", "image");
-    if (opts.headers) {
-      new Headers(opts.headers).forEach((value, key) => headers.set(key, value));
-    }
     const res = await fetch(assetUrl, {
       headers,
       signal: combinedSignal,
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      throw new AniziumAssetError("upstream", `HTTP ${res.status}`, res.status);
+    }
     return res;
+  } catch (error) {
+    if (error instanceof AniziumAssetError) throw error;
+    if (opts.signal?.aborted) {
+      throw new AniziumAssetError("aborted", "Asset request aborted");
+    }
+    if (timedOut) {
+      throw new AniziumAssetError("timeout", "Asset upstream timeout");
+    }
+    throw new AniziumAssetError(
+      "network",
+      error instanceof Error ? error.message : "Asset upstream error"
+    );
   } finally {
     clearTimeout(to);
   }
@@ -225,18 +254,37 @@ async function aniziumAssetFetchViaWorker(
       ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any?.(signals) ??
         controller.signal
       : (signals[0] ?? controller.signal);
-  const to = setTimeout(() => controller.abort(), 20_000);
+  let timedOut = false;
+  const to = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 20_000);
+
+  const proxyHeaders = new Headers(opts.headers);
+  if (PROXY_KEY) proxyHeaders.set("x-proxy-key", PROXY_KEY);
 
   try {
-    const proxyHeaders = new Headers(opts.headers);
-    if (PROXY_KEY) proxyHeaders.set("x-proxy-key", PROXY_KEY);
     const res = await fetch(url, {
       headers: proxyHeaders,
       signal: combinedSignal,
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      throw new AniziumAssetError("upstream", `HTTP ${res.status}`, res.status);
+    }
     return res;
+  } catch (error) {
+    if (error instanceof AniziumAssetError) throw error;
+    if (opts.signal?.aborted) {
+      throw new AniziumAssetError("aborted", "Asset request aborted");
+    }
+    if (timedOut) {
+      throw new AniziumAssetError("timeout", "Asset upstream timeout");
+    }
+    throw new AniziumAssetError(
+      "network",
+      error instanceof Error ? error.message : "Asset upstream error"
+    );
   } finally {
     clearTimeout(to);
   }

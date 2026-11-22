@@ -1,11 +1,23 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, open, readFile, rename, rmdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 const runFile = promisify(execFile);
 const nativeFetch = globalThis.fetch;
+const REPO_RECOVERY_SCRIPT = fileURLToPath(new URL("../../scripts/warp-recovery.sh", import.meta.url));
 const WINDOW = 300_000;
+const RETRY_BASE = 60_000;
+const RETRY_MAX = 15 * 60_000;
+const ASSET_PROBE_TIMEOUT = 10_000;
+const DEFAULT_RECOVERY_TIMEOUT = 60_000;
+const IGNORED_ASSET_STATUSES = new Set([400, 401, 403, 404, 410, 429]);
+
+function networkErrorCode(error) {
+  return error?.cause?.code || error?.code;
+}
 
 export async function probeUpstream(env = process.env, signal, fetcher = nativeFetch) {
   const worker = env.ANIZIUM_WORKER_URL;
@@ -64,25 +76,93 @@ export async function probeUpstream(env = process.env, signal, fetcher = nativeF
     if (res.status === 200) return "success";
     if (configurationError) return "ignore";
     if (worker && [401, 403].includes(res.status) && !upstreamAuth) return "ignore";
-    return [401, 403, 429].includes(res.status) || res.status >= 500 ? "failure" : "ignore";
+    return [401, 403].includes(res.status) || res.status >= 500 ? "failure" : "ignore";
   } catch (error) {
     if (signal?.aborted) return "ignore";
-    if (["ERR_INVALID_URL", "ERR_INVALID_CHAR", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT"].includes(error?.cause?.code || error?.code)) return "ignore";
+    if (["ERR_INVALID_URL", "ERR_INVALID_CHAR", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT"].includes(networkErrorCode(error))) return "ignore";
     return "failure";
   }
+}
+
+export async function probeAsset(env = process.env, signal, fetcher = nativeFetch) {
+  const worker = env.ANIZIUM_WORKER_URL;
+  const assetUrl = env.ANIZIUM_WATCHDOG_ASSET_URL;
+  if (!worker || !assetUrl) return "ignore";
+
+  let url;
+  try {
+    const asset = new URL(assetUrl);
+    if (!["http:", "https:"].includes(asset.protocol) || asset.username || asset.password) return "ignore";
+    url = new URL(`${worker.replace(/\/$/, "")}/__asset`);
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return "ignore";
+    url.searchParams.set("url", asset.toString());
+  } catch {
+    return "ignore";
+  }
+
+  const headers = { range: "bytes=0-1023", accept: "*/*" };
+  if (env.ANIZIUM_PROXY_KEY) headers["x-proxy-key"] = env.ANIZIUM_PROXY_KEY;
+
+  try {
+    const res = await fetcher(url, {
+      headers,
+      cache: "no-store",
+      redirect: "manual",
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(ASSET_PROBE_TIMEOUT)]) : AbortSignal.timeout(ASSET_PROBE_TIMEOUT),
+    });
+    if (![200, 206].includes(res.status)) {
+      await res.body?.cancel().catch(() => {});
+      return IGNORED_ASSET_STATUSES.has(res.status) ? "ignore" : "failure";
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) return "failure";
+    try {
+      const { value } = await reader.read();
+      return value && value.byteLength > 0 ? "success" : "failure";
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+  } catch (error) {
+    if (signal?.aborted) return "ignore";
+    if (["ERR_INVALID_URL", "ERR_INVALID_CHAR", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT"].includes(networkErrorCode(error))) return "ignore";
+    return "failure";
+  }
+}
+
+export async function probeAll(env = process.env, signal, fetcher = nativeFetch) {
+  const [api, asset] = await Promise.all([
+    probeUpstream(env, signal, fetcher),
+    probeAsset(env, signal, fetcher),
+  ]);
+  if (api === "failure" || asset === "failure") return "failure";
+  if (api === "success" || asset === "success") return "success";
+  return "ignore";
+}
+
+function waitingState(at, attempts) {
+  const delay = attempts <= 1 ? WINDOW : Math.min(RETRY_MAX, RETRY_BASE * 2 ** (attempts - 2));
+  return { version: 1, status: "waiting", startedAt: at, deadline: at + delay, attempts };
 }
 
 export function createWatchdog({
   directory = resolve(process.env.ANIZIUM_WATCHDOG_STATE_DIR || ".calium-watchdog"),
   now = Date.now,
-  probe = probeUpstream,
-  execute = (signal) => runFile("/bin/bash", ["/opt/warp.sh"], {
-    shell: false, timeout: 10_000, maxBuffer: 64 * 1024, killSignal: "SIGKILL", signal,
-  }),
+  probe = probeAll,
+  execute = (signal) => {
+    const configured = process.env.ANIZIUM_WATCHDOG_RECOVERY_SCRIPT;
+    const script = configured || (existsSync(REPO_RECOVERY_SCRIPT) ? REPO_RECOVERY_SCRIPT : "/opt/warp.sh");
+    const timeoutValue = Number(process.env.ANIZIUM_WATCHDOG_RECOVERY_TIMEOUT_MS);
+    const timeout = Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : DEFAULT_RECOVERY_TIMEOUT;
+    return runFile("/bin/bash", [script], {
+      shell: false, timeout, maxBuffer: 64 * 1024, killSignal: "SIGKILL", signal,
+    });
+  },
 } = {}) {
   let busy = false;
   let stopped = false;
   let disabled = false;
+  let lockWarned = false;
   const controller = new AbortController();
   const lock = join(directory, "lock");
   const statePath = join(directory, "state.json");
@@ -104,15 +184,33 @@ export function createWatchdog({
   async function load() {
     try {
       const state = JSON.parse(await readFile(statePath, "utf8"));
-      if (state.version !== 1 || !["ready", "waiting", "locked"].includes(state.status) ||
-          (state.status === "waiting" && (!Number.isSafeInteger(state.deadline) || !Number.isSafeInteger(state.startedAt) || state.deadline - state.startedAt !== WINDOW))) {
+      const validWaiting = state.status !== "waiting" || (
+        Number.isSafeInteger(state.startedAt) &&
+        Number.isSafeInteger(state.deadline) &&
+        state.deadline >= state.startedAt &&
+        (state.attempts === undefined || (Number.isSafeInteger(state.attempts) && state.attempts >= 1))
+      );
+      if (state.version !== 1 || !["ready", "waiting", "locked"].includes(state.status) || !validWaiting) {
         throw new Error("Invalid state");
       }
       return state;
     } catch (error) {
+      // A corrupt/unreadable state is fail-closed; recovery must not run until an operator inspects it.
       const state = { version: 1, status: error.code === "ENOENT" ? "ready" : "locked" };
       await save(state);
       return state;
+    }
+  }
+
+  async function recover(attempts) {
+    console.warn(`[anizium-watchdog] upstream probe failed; running recovery (attempt ${attempts})`);
+    try {
+      await execute(controller.signal);
+      console.log("[anizium-watchdog] recovery command completed");
+      return true;
+    } catch (error) {
+      console.warn("[anizium-watchdog] recovery command failed; retry scheduled", error?.message || "");
+      return false;
     }
   }
 
@@ -130,28 +228,46 @@ export function createWatchdog({
         if (error.code === "EEXIST") return;
         throw error;
       }
+
       let state = await load();
-      if (state.status === "waiting" && (now() >= state.deadline || now() < state.startedAt)) {
-        state = { version: 1, status: "locked" };
+      if (state.status === "locked") {
+        if (!lockWarned) {
+          lockWarned = true;
+          console.warn("[anizium-watchdog] state is locked; manual inspection required");
+        }
+        return;
+      }
+
+      if (state.status === "waiting" && now() < state.startedAt) {
+        console.warn("[anizium-watchdog] clock moved backwards; resetting to ready");
+        state = { version: 1, status: "ready" };
         await save(state);
       }
-      if (state.status === "locked") return;
+
       const result = await probe(process.env, controller.signal);
       if (stopped) return;
+
       if (state.status === "waiting") {
-        if (now() >= state.deadline || now() < state.startedAt) {
-          await save({ version: 1, status: "locked" });
-        } else if (result === "success") {
+        if (result === "success") {
           await save({ version: 1, status: "ready" });
+          console.log("[anizium-watchdog] upstream recovered");
+          return;
         }
-      } else if (result === "failure") {
-        const startedAt = now();
-        await save({ version: 1, status: "waiting", startedAt, deadline: startedAt + WINDOW });
-        try {
-          await execute(controller.signal);
-        } catch {
-          console.warn("[anizium-watchdog] recovery command failed; waiting state retained");
+        if (result === "failure" && now() >= state.deadline) {
+          const attempts = (state.attempts ?? 1) + 1;
+          await save(waitingState(now(), attempts));
+          await recover(attempts);
+        } else if (result === "ignore" && now() >= state.deadline) {
+          await save({ ...state, startedAt: now(), deadline: now() + WINDOW });
+          console.warn("[anizium-watchdog] probe inconclusive; observation window extended");
         }
+        return;
+      }
+
+      if (result === "failure") {
+        const next = waitingState(now(), 1);
+        await save(next);
+        await recover(next.attempts);
       }
     } catch {
       safe = false;

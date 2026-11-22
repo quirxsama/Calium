@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createWatchdog, probeUpstream } from "../src/server/anizium-watchdog.mjs";
+import { createWatchdog, probeAll, probeAsset, probeUpstream } from "../src/server/anizium-watchdog.mjs";
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "calium-watchdog-"));
@@ -11,17 +11,22 @@ async function fixture(t) {
   let time = 1000;
   let result = "failure";
   let executions = 0;
+  let executeError = false;
   const options = {
     directory,
     now: () => time,
     probe: async () => result,
-    execute: async () => { executions++; },
+    execute: async () => {
+      executions++;
+      if (executeError) throw new Error("recovery unavailable");
+    },
   };
   const watchdog = createWatchdog(options);
   return {
     directory, options, watchdog,
     setTime: (value) => { time = value; },
     setResult: (value) => { result = value; },
+    setExecuteError: (value) => { executeError = value; },
     executions: () => executions,
     state: async () => JSON.parse(await readFile(join(directory, "state.json"), "utf8")),
   };
@@ -42,45 +47,93 @@ test("failure spam executes once; fresh probe recovery rearms", async (t) => {
   assert.equal(f.executions(), 2);
 });
 
-for (const time of [301000, 301001, 900000]) {
-  test(`HTTP 200 at ${time} locks permanently`, async (t) => {
+test("expired observation window retries instead of locking", async (t) => {
+  for (const time of [301000, 301001, 900000]) {
     const f = await fixture(t);
     await f.watchdog.check();
-    f.setTime(time);
-    f.setResult("success");
-    await f.watchdog.check();
-    assert.equal((await f.state()).status, "locked");
-    f.setResult("failure");
-    await f.watchdog.check();
-    f.setResult("success");
-    await f.watchdog.check();
-    assert.equal((await f.state()).status, "locked");
+    const first = await f.state();
+    assert.equal(first.status, "waiting");
+    assert.equal(first.attempts, 1);
+    assert.equal(first.deadline, 301000);
     assert.equal(f.executions(), 1);
-  });
-}
 
-test("restart preserves waiting and expired deadlines", async (t) => {
-  const f = await fixture(t);
-  await f.watchdog.check();
-  const restarted = createWatchdog(f.options);
-  await restarted.check();
-  assert.equal(f.executions(), 1);
-  f.setTime(301000);
-  await createWatchdog(f.options).check();
-  assert.equal((await f.state()).status, "locked");
+    f.setTime(time);
+    await f.watchdog.check();
+    const retried = await f.state();
+    assert.equal(retried.status, "waiting");
+    assert.equal(retried.attempts, 2);
+    assert.equal(retried.deadline, time + 60_000);
+    assert.equal(f.executions(), 2);
+
+    f.setResult("success");
+    f.setTime(time + 1);
+    await f.watchdog.check();
+    assert.equal((await f.state()).status, "ready");
+    assert.equal(f.executions(), 2);
+  }
 });
 
-test("probe started before deadline but completed at deadline cannot rearm", async (t) => {
+test("success after the observation window recovers without an extra execution", async (t) => {
   const f = await fixture(t);
   await f.watchdog.check();
-  f.setTime(300999);
-  const restarted = createWatchdog({ ...f.options, probe: async () => {
-    f.setTime(301000);
-    return "success";
-  } });
-  await restarted.check();
-  assert.equal((await f.state()).status, "locked");
+  f.setTime(301000);
+  f.setResult("success");
+  await f.watchdog.check();
+  assert.equal((await f.state()).status, "ready");
   assert.equal(f.executions(), 1);
+});
+
+test("restart preserves waiting and retries after expiry", async (t) => {
+  const f = await fixture(t);
+  await f.watchdog.check();
+  await createWatchdog(f.options).check();
+  assert.equal(f.executions(), 1);
+  assert.equal((await f.state()).status, "waiting");
+
+  f.setTime(301000);
+  await createWatchdog(f.options).check();
+  const state = await f.state();
+  assert.equal(state.status, "waiting");
+  assert.equal(state.attempts, 2);
+  assert.equal(f.executions(), 2);
+});
+
+test("a probe that completes after the deadline still decides the outcome", async (t) => {
+  const success = await fixture(t);
+  await success.watchdog.check();
+  success.setTime(300999);
+  await createWatchdog({ ...success.options, probe: async () => {
+    success.setTime(301000);
+    return "success";
+  } }).check();
+  assert.equal((await success.state()).status, "ready");
+  assert.equal(success.executions(), 1);
+
+  const failure = await fixture(t);
+  await failure.watchdog.check();
+  failure.setTime(300999);
+  await createWatchdog({ ...failure.options, probe: async () => {
+    failure.setTime(301000);
+    return "failure";
+  } }).check();
+  assert.equal((await failure.state()).status, "waiting");
+  assert.equal((await failure.state()).attempts, 2);
+  assert.equal(failure.executions(), 2);
+});
+
+test("a failed recovery command is retried after the observation window", async (t) => {
+  const f = await fixture(t);
+  f.setExecuteError(true);
+  await f.watchdog.check();
+  assert.equal((await f.state()).status, "waiting");
+  assert.equal(f.executions(), 1);
+
+  f.setExecuteError(false);
+  f.setTime(301000);
+  await f.watchdog.check();
+  assert.equal((await f.state()).status, "waiting");
+  assert.equal((await f.state()).attempts, 2);
+  assert.equal(f.executions(), 2);
 });
 
 test("independent instances share atomic execution guard", async (t) => {
@@ -110,6 +163,63 @@ test("configuration/expected responses never execute; stopped watchdog stays sto
   f.setResult("failure");
   await f.watchdog.check();
   assert.equal(f.executions(), 0);
+});
+
+test("clock moving backwards resets a waiting state to ready", async (t) => {
+  const f = await fixture(t);
+  await f.watchdog.check();
+  f.setTime(500);
+  f.setResult("success");
+  await f.watchdog.check();
+  assert.equal((await f.state()).status, "ready");
+  assert.equal(f.executions(), 1);
+});
+
+test("asset probe checks a real range through the worker", async () => {
+  const env = {
+    ANIZIUM_WORKER_URL: "https://worker.invalid",
+    ANIZIUM_PROXY_KEY: "secret",
+    ANIZIUM_WATCHDOG_ASSET_URL: "https://p.aniziumserver.site/a.mp4",
+  };
+  const result = await probeAsset(env, undefined, async (url, options) => {
+    const parsed = new URL(url);
+    assert.equal(parsed.pathname, "/__asset");
+    assert.equal(parsed.searchParams.get("url"), env.ANIZIUM_WATCHDOG_ASSET_URL);
+    assert.equal(options.headers.range, "bytes=0-1023");
+    assert.equal(options.headers["x-proxy-key"], "secret");
+    assert.equal(options.cache, "no-store");
+    return new Response(new Uint8Array([1, 2, 3]), { status: 206 });
+  });
+  assert.equal(result, "success");
+
+  for (const [status, expected] of [[404, "ignore"], [400, "ignore"], [401, "ignore"], [403, "ignore"], [429, "ignore"], [500, "failure"], [502, "failure"]]) {
+    const actual = await probeAsset(env, undefined, async () => new Response("{}", { status }));
+    assert.equal(actual, expected, `status ${status}`);
+  }
+
+  assert.equal(await probeAsset(env, undefined, async () => new Response(null, { status: 200 })), "failure");
+  assert.equal(await probeAsset(env, undefined, async () => { throw new TypeError("fetch failed"); }), "failure");
+  assert.equal(await probeAsset({ ...env, ANIZIUM_WATCHDOG_ASSET_URL: undefined }, undefined, () => assert.fail("missing asset url")), "ignore");
+  assert.equal(await probeAsset({ ...env, ANIZIUM_WORKER_URL: undefined }, undefined, () => assert.fail("missing worker")), "ignore");
+});
+
+test("combined probe requires both API and data plane to be healthy", async () => {
+  const env = {
+    ANIZIUM_WORKER_URL: "https://worker.invalid",
+    ANIZIUM_PROXY_KEY: "secret",
+    ANIZIUM_WATCHDOG_ASSET_URL: "https://p.aniziumserver.site/a.mp4",
+  };
+  const fetcher = (calendarStatus, assetStatus) => async (url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/page/calendar") return new Response("{}", { status: calendarStatus });
+    return new Response(new Uint8Array([1]), { status: assetStatus });
+  };
+  assert.equal(await probeAll(env, undefined, fetcher(200, 206)), "success");
+  assert.equal(await probeAll(env, undefined, fetcher(500, 206)), "failure");
+  assert.equal(await probeAll(env, undefined, fetcher(200, 502)), "failure");
+  assert.equal(await probeAll(env, undefined, fetcher(200, 404)), "success");
+  assert.equal(await probeAll({ ...env, ANIZIUM_WATCHDOG_ASSET_URL: undefined }, undefined, fetcher(200, 504)), "success");
+  assert.equal(await probeAll({}, undefined, async () => assert.fail("no credentials")), "ignore");
 });
 
 test("probe bypasses cache, recognizes proxy auth and upstream rejection", async () => {

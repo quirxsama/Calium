@@ -22,7 +22,7 @@ function load(file, overrides = {}, globals = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
   runInNewContext(code, {
-    module: compiled, exports: compiled.exports, URL, Headers, Response, AbortController,
+    module: compiled, exports: compiled.exports, URL, Headers, Response, ReadableStream, AbortController,
     setTimeout, clearTimeout, console, process, fetch,
     require: (name) => {
       if (name in overrides) return overrides[name];
