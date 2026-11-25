@@ -20,7 +20,10 @@ function positiveInt(value, fallback) {
 const PORT = process.env.PORT || 3002;
 const API_KEY = process.env.PROXY_API_KEY || "";
 const ASSET_HEADER_TIMEOUT_MS = positiveInt(process.env.ANIZIUM_ASSET_HEADER_TIMEOUT_MS, 20_000);
-const ASSET_IDLE_TIMEOUT_MS = positiveInt(process.env.ANIZIUM_ASSET_IDLE_TIMEOUT_MS, 30_000);
+const ASSET_IDLE_TIMEOUT_MS = positiveInt(
+  process.env.ANIZIUM_PROXY_ASSET_IDLE_TIMEOUT_MS || process.env.ANIZIUM_ASSET_IDLE_TIMEOUT_MS,
+  15_000
+);
 const LOG_REQUESTS = process.env.ANIZIUM_PROXY_LOG_REQUESTS === "1";
 
 const CF_CONTROL = process.env.ANIZIUM_CF_CONTROL || "";
@@ -32,6 +35,28 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
 const RATE_LIMIT_COOLDOWN_MS = positiveInt(process.env.ANIZIUM_429_COOLDOWN_MS, 30_000);
+const STREAM_RECONNECT_ATTEMPTS = positiveInt(process.env.ANIZIUM_STREAM_RECONNECT_ATTEMPTS, 6);
+
+const WATCH_DIR = process.env.ANIZIUM_WATCH_DIR || "/opt/proxy/watch";
+const WATCH_LOG = WATCH_DIR + "/asset.jsonl";
+const WATCH_LOG_MAX_BYTES = positiveInt(process.env.ANIZIUM_WATCH_LOG_MAX_BYTES, 50 * 1024 * 1024);
+let watchLogSize = 0;
+try {
+  fs.mkdirSync(WATCH_DIR, { recursive: true });
+} catch {}
+function audit(event) {
+  try {
+    const line = JSON.stringify({ ts: Date.now(), ...event }) + "\n";
+    watchLogSize += Buffer.byteLength(line);
+    if (watchLogSize > WATCH_LOG_MAX_BYTES) {
+      watchLogSize = 0;
+      try {
+        fs.renameSync(WATCH_LOG, WATCH_LOG + ".1");
+      } catch {}
+    }
+    fs.appendFile(WATCH_LOG, line, () => {});
+  } catch {}
+}
 
 function normalizeAccount(value, index) {
   if (!value || typeof value !== "object") return null;
@@ -307,7 +332,7 @@ function alternateAssetHost(targetUrl) {
   return alternate;
 }
 
-async function fetchAssetUpstream(targetUrl, req, signal) {
+async function fetchAssetUpstream(targetUrl, req, signal, rangeHeader) {
   const candidates = [targetUrl];
   const alternate = alternateAssetHost(targetUrl);
   if (alternate) candidates.push(alternate);
@@ -330,7 +355,8 @@ async function fetchAssetUpstream(targetUrl, req, signal) {
       attempted = true;
 
       const headers = buildAssetHeaders(req, account);
-      if (req.headers.range) headers.range = req.headers.range;
+      const range = rangeHeader ?? req.headers.range;
+      if (range) headers.range = range;
 
       const upstream = await fetch(candidate.toString(), {
         headers,
@@ -370,6 +396,50 @@ async function fetchAssetUpstream(targetUrl, req, signal) {
   }
 }
 
+function parseContentRange(value) {
+  if (!value) return null;
+  const match = /^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i.exec(String(value).trim());
+  if (!match) return null;
+  return {
+    start: Number(match[1]),
+    end: Number(match[2]),
+    total: match[3] === "*" ? null : Number(match[3]),
+  };
+}
+
+function responseSpan(status, headers) {
+  const range = parseContentRange(headers.get("content-range"));
+  if (range) return range;
+  if (status === 200) {
+    const length = Number(headers.get("content-length"));
+    if (Number.isFinite(length) && length >= 0) {
+      return { start: 0, end: length > 0 ? length - 1 : -1, total: length };
+    }
+  }
+  return null;
+}
+
+function isVideoAsset(targetUrl) {
+  return /\.(mp4|m4v|webm)$/i.test(targetUrl.pathname);
+}
+
+function waitDrain(res) {
+  if (!res.writableNeedDrain) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      res.off("drain", done);
+      res.off("close", done);
+      res.off("error", done);
+      resolve();
+    };
+    res.once("drain", done);
+    res.once("close", done);
+    res.once("error", done);
+  });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function proxyAsset(targetUrl, req, res) {
   if (!isAllowedAssetUrl(targetUrl)) {
     res.writeHead(400, { "Content-Type": "application/json" });
@@ -378,22 +448,49 @@ async function proxyAsset(targetUrl, req, res) {
   }
 
   const startedAt = Date.now();
-  const controller = new AbortController();
-  let headerTimedOut = false;
+  const video = isVideoAsset(targetUrl);
+  const requestRange = req.headers.range || (video ? "bytes=0-" : undefined);
+  const streamId = `${startedAt.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   let clientAborted = false;
-  let body = null;
-
-  const headerTimer = setTimeout(() => {
-    headerTimedOut = true;
-    controller.abort();
-  }, ASSET_HEADER_TIMEOUT_MS);
-
+  let activeController = null;
+  let activeBody = null;
+  let headerTimer = null;
+  let headerTimedOut = false;
   let idleTimer = null;
+
+  const clearHeaderTimer = () => {
+    if (headerTimer) {
+      clearTimeout(headerTimer);
+      headerTimer = null;
+    }
+  };
   const clearIdleTimer = () => {
-    if (idleTimer !== null) {
+    if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;
     }
+  };
+  const abortActive = () => {
+    try {
+      activeBody?.destroy?.();
+    } catch {}
+    try {
+      activeController?.abort();
+    } catch {}
+    activeBody = null;
+    activeController = null;
+  };
+  const beginAttempt = (timeoutMs = ASSET_HEADER_TIMEOUT_MS) => {
+    clearHeaderTimer();
+    activeController = new AbortController();
+    headerTimedOut = false;
+    headerTimer = setTimeout(() => {
+      headerTimedOut = true;
+      try {
+        activeController?.abort();
+      } catch {}
+    }, timeoutMs);
+    return activeController.signal;
   };
   const armIdleTimer = () => {
     clearIdleTimer();
@@ -408,24 +505,55 @@ async function proxyAsset(targetUrl, req, res) {
         path: targetUrl.pathname,
         idleMs: ASSET_IDLE_TIMEOUT_MS,
       });
-      controller.abort();
-      if (body) body.destroy();
-      if (!res.destroyed) res.destroy();
+      audit({
+        type: "idle",
+        id: streamId,
+        host: targetUrl.hostname,
+        path: targetUrl.pathname,
+        idleMs: ASSET_IDLE_TIMEOUT_MS,
+      });
+      abortActive();
     }, ASSET_IDLE_TIMEOUT_MS);
   };
 
   res.on("close", () => {
     if (!res.writableEnded) clientAborted = true;
     clearIdleTimer();
-    controller.abort();
+    clearHeaderTimer();
+    abortActive();
   });
 
+  const closeStream = (outcome, extra = {}) => {
+    clearHeaderTimer();
+    clearIdleTimer();
+    abortActive();
+    if (!res.writableEnded && !res.destroyed) res.end();
+    audit({
+      type: "close",
+      id: streamId,
+      host: targetUrl.hostname,
+      path: targetUrl.pathname,
+      ms: Date.now() - startedAt,
+      outcome,
+      ...extra,
+    });
+  };
+
   try {
-    const result = await fetchAssetUpstream(targetUrl, req, controller.signal);
+    let result = await fetchAssetUpstream(targetUrl, req, beginAttempt(), requestRange);
+    clearHeaderTimer();
+
     if (result.rateLimited) {
       console.warn("[anizium-proxy] asset rate limited: all accounts cooling", {
         host: targetUrl.hostname,
         path: targetUrl.pathname,
+      });
+      audit({
+        type: "rate_limit",
+        id: streamId,
+        host: targetUrl.hostname,
+        path: targetUrl.pathname,
+        retryAfter: result.retryAfter ?? 30,
       });
       res.writeHead(429, {
         "Content-Type": "application/json",
@@ -435,14 +563,17 @@ async function proxyAsset(targetUrl, req, res) {
       return;
     }
 
-    const upstream = result.upstream;
+    let upstream = result.upstream;
+    let account = result.account;
+    let sourceUrl = result.url ?? targetUrl;
+
     console.log("[anizium-proxy] asset served", {
-      host: result.url?.hostname ?? targetUrl.hostname,
+      host: sourceUrl.hostname,
       path: targetUrl.pathname,
-      account: result.account?.name,
-      egress: result.account ? accountEgress(result.account) : "unknown",
+      account: account?.name,
+      egress: account ? accountEgress(account) : "unknown",
       status: upstream.status,
-      range: req.headers.range || "full",
+      range: requestRange || req.headers.range || "full",
       ms: Date.now() - startedAt,
     });
 
@@ -461,6 +592,9 @@ async function proxyAsset(targetUrl, req, res) {
       return;
     }
 
+    const span = responseSpan(upstream.status, upstream.headers);
+    const expected = span ? Math.max(0, span.end - span.start + 1) : null;
+
     const responseHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Cache-Control": ASSET_CACHE_CONTROL,
@@ -472,18 +606,222 @@ async function proxyAsset(targetUrl, req, res) {
     }
 
     res.writeHead(upstream.status, responseHeaders);
+
+    audit({
+      type: "open",
+      id: streamId,
+      host: sourceUrl.hostname,
+      path: targetUrl.pathname,
+      range: requestRange || "full",
+      account: account?.name,
+      egress: account ? accountEgress(account) : "unknown",
+      status: upstream.status,
+      expected,
+    });
+
     if (!upstream.body) {
-      res.end();
+      closeStream("empty", { sent: 0, expected });
       return;
     }
 
-    body = upstream.body.pipe ? upstream.body : Readable.fromWeb(upstream.body);
-    body.on("error", () => res.destroy());
-    body.pipe(res);
-    body.on("data", armIdleTimer);
-    body.on("end", clearIdleTimer);
-    armIdleTimer();
+    let body = upstream.body;
+    activeBody = body;
+    let sent = 0;
+    let reconnects = 0;
+    let lastProgressAudit = 0;
+    const maxReconnects = video ? STREAM_RECONNECT_ATTEMPTS : 0;
+
+    for (;;) {
+      let streamError = null;
+      try {
+        armIdleTimer();
+        for await (const chunk of body) {
+          if (clientAborted || res.destroyed) break;
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          let piece = buffer;
+          if (expected !== null) {
+            const remaining = expected - sent;
+            if (remaining <= 0) break;
+            if (piece.length > remaining) piece = piece.subarray(0, remaining);
+          }
+          if (!piece.length) continue;
+          if (!res.write(piece)) await waitDrain(res);
+          sent += piece.length;
+          armIdleTimer();
+          const now = Date.now();
+          if (video && now - lastProgressAudit >= 5000) {
+            lastProgressAudit = now;
+            audit({ type: "progress", id: streamId, sent, expected });
+          }
+        }
+      } catch (error) {
+        streamError = error;
+      }
+      clearIdleTimer();
+
+      if (clientAborted || res.destroyed) {
+        closeStream("client_abort", { sent, expected, reconnects });
+        return;
+      }
+
+      if (expected !== null && sent >= expected) {
+        closeStream("ok", { sent, expected, reconnects });
+        return;
+      }
+
+      if (!streamError && expected !== null) {
+        streamError = new Error(`upstream ended early (${sent}/${expected})`);
+      }
+
+      if (!video || span === null || expected === null || reconnects >= maxReconnects) {
+        console.warn("[anizium-proxy] asset stream lost", {
+          host: sourceUrl.hostname,
+          path: targetUrl.pathname,
+          sent,
+          expected,
+          reconnects,
+          error: streamError?.message || "unknown",
+        });
+        audit({
+          type: "stream_lost",
+          id: streamId,
+          host: sourceUrl.hostname,
+          path: targetUrl.pathname,
+          sent,
+          expected,
+          reconnects,
+          error: streamError?.message || "unknown",
+        });
+        closeStream("stream_lost", {
+          sent,
+          expected,
+          reconnects,
+          error: streamError?.message || "unknown",
+        });
+        return;
+      }
+
+      reconnects += 1;
+      const nextStart = span.start + sent;
+      if (nextStart > span.end) {
+        closeStream("ok", { sent, expected, reconnects });
+        return;
+      }
+      const nextRange = `bytes=${nextStart}-${span.end}`;
+      console.warn("[anizium-proxy] asset stream reconnect", {
+        host: sourceUrl.hostname,
+        path: targetUrl.pathname,
+        sent,
+        expected,
+        attempt: reconnects,
+        nextStart,
+        error: streamError?.message || "unknown",
+      });
+      audit({
+        type: "reconnect",
+        id: streamId,
+        host: sourceUrl.hostname,
+        path: targetUrl.pathname,
+        attempt: reconnects,
+        nextStart,
+        sent,
+        expected,
+        error: streamError?.message || "unknown",
+      });
+
+      abortActive();
+      let resumed = false;
+      for (let tries = 0; tries < 2 && !resumed; tries++) {
+        try {
+          const reopen = await fetchAssetUpstream(targetUrl, req, beginAttempt(6_000), nextRange);
+          clearHeaderTimer();
+          if (reopen.rateLimited) {
+            await sleep(Math.min(3000, Math.max(500, (reopen.retryAfter ?? 1) * 1000)));
+            continue;
+          }
+
+          const nextUpstream = reopen.upstream;
+          if (!nextUpstream.ok) {
+            nextUpstream.body?.destroy?.();
+            await sleep(300);
+            continue;
+          }
+
+          const nextSpan = responseSpan(nextUpstream.status, nextUpstream.headers);
+          const valid =
+            nextUpstream.status === 206 &&
+            nextSpan &&
+            nextSpan.start === nextStart &&
+            (nextSpan.total === null || span.total === null || nextSpan.total === span.total) &&
+            nextSpan.end <= span.end;
+          if (!valid) {
+            nextUpstream.body?.destroy?.();
+            audit({
+              type: "resume_mismatch",
+              id: streamId,
+              host: targetUrl.hostname,
+              path: targetUrl.pathname,
+              nextStart,
+              status: nextUpstream.status,
+              nextSpan,
+            });
+            await sleep(300);
+            continue;
+          }
+
+          body = nextUpstream.body;
+          activeBody = body;
+          upstream = nextUpstream;
+          account = reopen.account;
+          sourceUrl = reopen.url ?? targetUrl;
+          resumed = true;
+          console.log("[anizium-proxy] asset stream resumed", {
+            host: sourceUrl.hostname,
+            path: targetUrl.pathname,
+            sent,
+            nextStart,
+            attempt: reconnects,
+            account: account?.name,
+            egress: account ? accountEgress(account) : "unknown",
+          });
+          audit({
+            type: "resumed",
+            id: streamId,
+            host: sourceUrl.hostname,
+            path: targetUrl.pathname,
+            nextStart,
+            sent,
+            attempt: reconnects,
+            account: account?.name,
+            egress: account ? accountEgress(account) : "unknown",
+          });
+        } catch (error) {
+          audit({
+            type: "resume_error",
+            id: streamId,
+            host: targetUrl.hostname,
+            path: targetUrl.pathname,
+            nextStart,
+            error: error?.message || String(error),
+          });
+          await sleep(300);
+        }
+      }
+
+      if (!resumed) {
+        console.warn("[anizium-proxy] asset stream resume failed", {
+          host: sourceUrl.hostname,
+          path: targetUrl.pathname,
+          sent,
+          expected,
+          reconnects,
+        });
+        closeStream("resume_failed", { sent, expected, reconnects });
+        return;
+      }
+    }
   } catch (e) {
+    clearHeaderTimer();
     clearIdleTimer();
     if (clientAborted || res.destroyed) return;
     if (res.headersSent) {
@@ -504,7 +842,8 @@ async function proxyAsset(targetUrl, req, res) {
     res.writeHead(status, headers);
     res.end(JSON.stringify({ success: false, error: e?.message || "Asset proxy failed" }));
   } finally {
-    clearTimeout(headerTimer);
+    clearHeaderTimer();
+    clearIdleTimer();
     if (LOG_REQUESTS && res.writableEnded) {
       console.log("[anizium-proxy] asset request", {
         host: targetUrl.hostname,
