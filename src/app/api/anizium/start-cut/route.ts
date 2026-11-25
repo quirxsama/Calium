@@ -151,7 +151,7 @@ function detectCut(file: string): Promise<Cut | null> {
           to > from &&
           to <= 12 &&
           duration >= 0.7 &&
-          duration <= 4.5
+          duration <= 6.5
         ) {
           cut = { from: Math.round(from * 1000) / 1000, to: Math.round(to * 1000) / 1000 };
         }
