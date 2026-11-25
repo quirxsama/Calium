@@ -17,12 +17,14 @@ import {
   MediaProvider,
   Poster,
   Track,
+  type MediaErrorDetail,
   type MediaPlayerInstance,
   type MediaTimeUpdateEventDetail,
 } from "@vidstack/react";
 import { DefaultVideoLayout, defaultLayoutIcons } from "@vidstack/react/player/layouts/default";
 import { SkipForward } from "lucide-react";
 import type { SourceGroup, SubtitleData } from "@/lib/anizium/schemas";
+import { useLocale } from "@/i18n";
 import { TURKISH_TRANSLATIONS } from "./translations";
 import { AudioTrackMenuItem, CaptionStyleSubmenu, QualityMenuItem } from "./player-menus";
 import { useCaptionSettings } from "@/hooks/use-caption-settings";
@@ -47,6 +49,10 @@ import { bindSpaceSpeedBoost } from "./space-speed-boost";
 
 const AUDIO_STORAGE_KEY = "anizium-audio-track";
 const VOLUME_STORAGE_KEY = "anizium-player-volume";
+const MAX_STREAM_RETRIES = 3;
+const STREAM_STALL_TIMEOUT_MS = 15_000;
+const STREAM_RETRY_DELAYS_MS = [1_000, 3_000, 8_000] as const;
+const HEALTHY_PLAYBACK_RESET_MS = 30_000;
 
 type Props = {
   groups: SourceGroup[];
@@ -162,6 +168,15 @@ function detectType(link: string, type?: string | null): MediaType {
   return "video/mp4";
 }
 
+function withRetryParam(url: string, nonce: number): string {
+  if (nonce <= 0) return url;
+  const hashIdx = url.indexOf("#");
+  const base = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
+  const hash = hashIdx >= 0 ? url.slice(hashIdx) : "";
+  const separator = base.includes("?") ? "&" : "?";
+  return `${base}${separator}_r=${nonce}${hash}`;
+}
+
 function attemptPlayerPlay(player: MediaPlayerInstance) {
   const playerLike = player as unknown as { play?: () => Promise<void> | void; muted?: boolean };
 
@@ -209,6 +224,7 @@ export function AnimePlayer({
   onFullscreenChange,
   onControlsVisibilityChange,
 }: Props) {
+  const { t, locale } = useLocale();
   const router = useRouter();
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const seededRef = useRef(false);
@@ -221,6 +237,39 @@ export function AnimePlayer({
   const introTimerRef = useRef<number | null>(null);
   const introStartRef = useRef<number | null>(null);
   const introSongFadeTimerRef = useRef<number | null>(null);
+  const retryTimerRef = useRef<number | null>(null);
+  const stallTimerRef = useRef<number | null>(null);
+  const healthyTimerRef = useRef<number | null>(null);
+  const retryCountRef = useRef(0);
+  const startCutRef = useRef<{ from: number; to: number } | null>(null);
+  const startCutAppliedRef = useRef(false);
+  const [retryState, setRetryState] = useState<{ url: string | null; count: number }>({
+    url: null,
+    count: 0,
+  });
+  const [streamErrorUrl, setStreamErrorUrl] = useState<string | null>(null);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current !== null) {
+      window.clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+
+  const clearHealthyTimer = useCallback(() => {
+    if (healthyTimerRef.current !== null) {
+      window.clearTimeout(healthyTimerRef.current);
+      healthyTimerRef.current = null;
+    }
+  }, []);
+
   const [showIntroSkip, setShowIntroSkip] = useState(false);
   const [showRecapSkip, setShowRecapSkip] = useState(false);
   const [showIntroSong, setShowIntroSong] = useState(false);
@@ -281,6 +330,8 @@ export function AnimePlayer({
     return getPreferredQualityIndex(variants, playerPrefs.defaultQuality);
   }, [currentTrack, playerPrefs.defaultQuality, selectedQuality]);
   const active = currentTrack?.variants[activeIdx];
+  const retryNonce = retryState.url === active?.url ? retryState.count : 0;
+  const streamError = !!active?.url && streamErrorUrl === active.url;
   const resumeFromRef = useRef<number | null>(null);
   const { settings, update: updateCaption, reset: resetCaption } = useCaptionSettings();
   const [resolvedSubtitles, setResolvedSubtitles] = useState<SubtitleData[]>(subtitles);
@@ -392,7 +443,44 @@ export function AnimePlayer({
   useEffect(() => {
     seededRef.current = false;
     autoplayAttemptedRef.current = false;
+    retryCountRef.current = 0;
+    clearRetryTimer();
+    clearStallTimer();
+    clearHealthyTimer();
+  }, [active?.url, clearRetryTimer, clearStallTimer, clearHealthyTimer]);
+
+  useEffect(() => {
+    startCutRef.current = null;
+    startCutAppliedRef.current = false;
+    const url = active?.url;
+    if (!url || !/\.(mp4|m4v|webm)(?:[?#]|$)/i.test(url)) return;
+    const controller = new AbortController();
+    fetch(`/api/anizium/start-cut?url=${encodeURIComponent(url)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const cut = data?.cut as { from?: unknown; to?: unknown } | null | undefined;
+        if (
+          !controller.signal.aborted &&
+          typeof cut?.from === "number" &&
+          typeof cut?.to === "number" &&
+          cut.to > cut.from
+        ) {
+          startCutRef.current = { from: cut.from, to: cut.to };
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
   }, [active?.url]);
+
+  useEffect(() => {
+    return () => {
+      clearRetryTimer();
+      clearStallTimer();
+      clearHealthyTimer();
+    };
+  }, [clearRetryTimer, clearStallTimer, clearHealthyTimer]);
 
   useEffect(() => {
     if (!showOutroSkip || (!nextEpisodeHref && !onNextEpisode)) {
@@ -602,7 +690,79 @@ export function AnimePlayer({
     }
   }
 
+  function reloadSource() {
+    const p = playerRef.current;
+    if (p) {
+      const time = p.currentTime;
+      if (Number.isFinite(time) && time > 1) resumeFromRef.current = time;
+    }
+    clearRetryTimer();
+    clearStallTimer();
+    clearHealthyTimer();
+    seededRef.current = false;
+    autoplayAttemptedRef.current = false;
+    setStreamErrorUrl(null);
+    setRetryState((prev) => {
+      const url = active?.url ?? null;
+      const count = prev.url === url ? prev.count : 0;
+      return { url, count: count + 1 };
+    });
+  }
+
+  function handleStreamFailure() {
+    if (retryTimerRef.current !== null) return;
+    clearHealthyTimer();
+
+    if (retryCountRef.current >= MAX_STREAM_RETRIES) {
+      setStreamErrorUrl(active?.url ?? null);
+      return;
+    }
+
+    const attempt = retryCountRef.current;
+    retryCountRef.current = attempt + 1;
+    setStreamErrorUrl(null);
+    const delay = STREAM_RETRY_DELAYS_MS[Math.min(attempt, STREAM_RETRY_DELAYS_MS.length - 1)];
+    retryTimerRef.current = window.setTimeout(() => {
+      retryTimerRef.current = null;
+      reloadSource();
+    }, delay);
+  }
+
+  function armStallTimer() {
+    if (retryTimerRef.current !== null || streamError) return;
+    const p = playerRef.current;
+    if (!p || p.paused) return;
+    if (stallTimerRef.current !== null) return;
+    clearHealthyTimer();
+    stallTimerRef.current = window.setTimeout(() => {
+      stallTimerRef.current = null;
+      if (playerRef.current?.paused) return;
+      handleStreamFailure();
+    }, STREAM_STALL_TIMEOUT_MS);
+  }
+
+  function onPlaying() {
+    clearStallTimer();
+    clearHealthyTimer();
+    healthyTimerRef.current = window.setTimeout(() => {
+      healthyTimerRef.current = null;
+      retryCountRef.current = 0;
+      setStreamErrorUrl(null);
+    }, HEALTHY_PLAYBACK_RESET_MS);
+  }
+
+  function onError(detail: MediaErrorDetail) {
+    console.warn("[anime-player] media playback error", detail?.message ?? detail);
+    // Upstream errors (429/404/403) will not recover by retrying immediately and
+    // only amplify rate limits. Show the retry UI; stall recovery stays automatic.
+    clearRetryTimer();
+    clearHealthyTimer();
+    retryCountRef.current = MAX_STREAM_RETRIES;
+    setStreamErrorUrl(active?.url ?? null);
+  }
+
   function onCanPlay() {
+    clearStallTimer();
     const p = playerRef.current;
     if (!p) return;
     if (onPlayerReady && !readyFiredRef.current) {
@@ -628,7 +788,15 @@ export function AnimePlayer({
   }
 
   function onTU(detail: MediaTimeUpdateEventDetail) {
+    clearStallTimer();
     const t = detail.currentTime;
+    const startCut = startCutRef.current;
+    if (startCut && !startCutAppliedRef.current && t >= startCut.from && t < startCut.to) {
+      startCutAppliedRef.current = true;
+      const p = playerRef.current;
+      if (p) p.currentTime = startCut.to;
+      return;
+    }
     // Intro skip visibility
     if (introStart != null && introEnd != null && introEnd > introStart) {
       setShowIntroSkip(t >= introStart && t < introEnd);
@@ -910,19 +1078,19 @@ export function AnimePlayer({
   const qualityOptions = useMemo(
     () =>
       (currentTrack?.variants ?? []).map((s, i) => ({
-        label: s.quality ? `${s.quality}p` : `Kaynak ${i + 1}`,
+        label: s.quality ? `${s.quality}p` : t("watch.source", { index: i + 1 }),
         value: String(i),
       })),
-    [currentTrack]
+    [currentTrack, t]
   );
 
   const audioOptions = useMemo(
     () =>
-      audioTracks.map((t) => ({
-        label: t.label,
-        value: t.id,
+      audioTracks.map((track) => ({
+        label: (groups[Number(track.id)]?.name ?? groups[Number(track.id)]?.group ?? groups[Number(track.id)]?.platform ?? "").trim() ? track.label : t("watch.audioTrack", { index: Number(track.id) + 1 }),
+        value: track.id,
       })),
-    [audioTracks]
+    [audioTracks, groups, t]
   );
 
   const cueStyle = useMemo(
@@ -963,7 +1131,7 @@ export function AnimePlayer({
   if (!active) {
     return (
       <div className="aspect-video w-full rounded-xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-center text-[var(--muted-foreground)]">
-        Oynatılabilir kaynak bulunamadı.
+        {t("watch.noPlayableSource")}
       </div>
     );
   }
@@ -979,7 +1147,7 @@ export function AnimePlayer({
       <MediaPlayer
         ref={playerRef}
         title={title}
-        src={{ src: active.url, type: detectType(active.url, active.type) }}
+        src={{ src: withRetryParam(active.url, retryNonce), type: detectType(active.url, active.type) }}
         crossOrigin
         playsInline
         aspectRatio="16/9"
@@ -991,8 +1159,14 @@ export function AnimePlayer({
           setVolume(detail.volume);
         }}
         onCanPlay={onCanPlay}
+        onPlaying={onPlaying}
+        onWaiting={armStallTimer}
+        onStalled={armStallTimer}
+        onError={onError}
         onTimeUpdate={onTU}
         onEnded={() => {
+          clearStallTimer();
+          clearHealthyTimer();
           cancelOutroAutoAdvance();
           onEnded?.();
         }}
@@ -1001,6 +1175,8 @@ export function AnimePlayer({
           onPlay?.();
         }}
         onPause={() => {
+          clearStallTimer();
+          clearHealthyTimer();
           cancelOutroAutoAdvance();
           onPause?.();
         }}
@@ -1027,7 +1203,7 @@ export function AnimePlayer({
         </MediaProvider>
         <DefaultVideoLayout
           icons={defaultLayoutIcons}
-          translations={TURKISH_TRANSLATIONS}
+          translations={locale === "tr" ? TURKISH_TRANSLATIONS : undefined}
           noGestures={isTouchDevice}
           slots={{
             settingsMenuItemsStart: (
@@ -1068,6 +1244,25 @@ export function AnimePlayer({
             {overlayRightRail}
           </div>
         )}
+        {streamError && (
+          <div
+            role="alert"
+            className="absolute inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-black/80 px-6 text-center text-white"
+          >
+            <p className="max-w-md text-sm font-medium sm:text-base">{t("watch.streamError")}</p>
+            <button
+              type="button"
+              onClick={() => {
+                clearRetryTimer();
+                retryCountRef.current = 0;
+                reloadSource();
+              }}
+              className="rounded-lg bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+            >
+              {t("watch.retry")}
+            </button>
+          </div>
+        )}
         {/* Intro Song Badge Overlay (Bottom-Left) */}
         {showIntroSong && (
           <IntroSongBadge
@@ -1081,7 +1276,7 @@ export function AnimePlayer({
           <button
             onClick={skipIntro}
             className="absolute bottom-18 right-4 z-50 flex overflow-hidden rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90"
-            aria-label="Intro&apos;yu atla"
+            aria-label={t("watch.skipIntroAria")}
           >
             {playerPrefs.autoSkipIntro && (
               <span
@@ -1090,7 +1285,7 @@ export function AnimePlayer({
               />
             )}
             <span className="relative z-10 flex items-center gap-1.5">
-              <SkipForward className="h-4 w-4" /> Intro&apos;yu Atla
+              <SkipForward className="h-4 w-4" /> {t("watch.skipIntro")}
             </span>
           </button>
         )}
@@ -1102,10 +1297,10 @@ export function AnimePlayer({
               "absolute right-4 z-50 flex overflow-hidden rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-opacity hover:opacity-90 animate-in fade-in",
               showIntroSkip ? "bottom-30" : "bottom-18"
             )}
-            aria-label="Özeti atla"
+            aria-label={t("watch.skipRecapAria")}
           >
             <span className="relative z-10 flex items-center gap-1.5">
-              <SkipForward className="h-4 w-4" /> Özeti Atla
+              <SkipForward className="h-4 w-4" /> {t("watch.skipRecap")}
             </span>
           </button>
         )}
@@ -1115,7 +1310,7 @@ export function AnimePlayer({
             type="button"
             onClick={goNextEpisode}
             className="group absolute bottom-20 right-4 z-50 overflow-hidden rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg transition-all duration-300 hover:scale-[1.02] hover:opacity-95 animate-in fade-in slide-in-from-bottom-2 sm:bottom-16"
-            aria-label="Sonraki bölüme geç"
+            aria-label={t("watch.nextEpisodeAria")}
           >
             <span
               className="absolute inset-x-0 bottom-0 h-1 origin-left bg-white/35 transition-transform duration-1000 ease-linear"
@@ -1123,7 +1318,7 @@ export function AnimePlayer({
             />
             <span className="relative z-10 flex items-center gap-2">
               <span className="flex items-center gap-1.5">
-                Sonraki Bölüm
+                {t("watch.nextEpisode")}
                 <SkipForward className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </span>
             </span>
@@ -1131,7 +1326,7 @@ export function AnimePlayer({
         )}
         {spaceSpeedBoost && (
           <div role="status" className="pointer-events-none absolute inset-x-0 top-5 z-50 flex justify-center">
-            <span className="rounded-full bg-black/65 px-4 py-2 text-sm font-semibold text-white">2× hız</span>
+            <span className="rounded-full bg-black/65 px-4 py-2 text-sm font-semibold text-white">{t("watch.speedLabel")}</span>
           </div>
         )}
         <MobileSeekOverlay

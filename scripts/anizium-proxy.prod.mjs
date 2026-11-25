@@ -17,6 +17,15 @@ function positiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+function retryAfterMs(value) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(1_000, Math.floor(seconds * 1000));
+  const at = Date.parse(String(value));
+  if (Number.isFinite(at)) return Math.max(1_000, at - Date.now());
+  return null;
+}
+
 const PORT = process.env.PORT || 3002;
 const API_KEY = process.env.PROXY_API_KEY || "";
 const ASSET_HEADER_TIMEOUT_MS = positiveInt(process.env.ANIZIUM_ASSET_HEADER_TIMEOUT_MS, 20_000);
@@ -35,6 +44,11 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
 const RATE_LIMIT_COOLDOWN_MS = positiveInt(process.env.ANIZIUM_429_COOLDOWN_MS, 30_000);
+const RATE_LIMIT_MAX_COOLDOWN_MS = positiveInt(
+  process.env.ANIZIUM_429_MAX_COOLDOWN_MS,
+  60_000
+);
+const RATE_LIMIT_WAIT_MS = positiveInt(process.env.ANIZIUM_429_WAIT_MS, 10_000);
 const STREAM_RECONNECT_ATTEMPTS = positiveInt(process.env.ANIZIUM_STREAM_RECONNECT_ATTEMPTS, 6);
 
 const WATCH_DIR = process.env.ANIZIUM_WATCH_DIR || "/opt/proxy/watch";
@@ -124,7 +138,10 @@ const accountCooldowns = new Map();
 // account/egress for consecutive range requests instead of hopping between
 // direct and WARP on every request.
 const stickyAccounts = new Map();
-const STICKY_ACCOUNT_MS = 120_000;
+// 0 disables sticky pinning: Firefox opens several ranges per file and a pinned
+// account sees them all at once, which is exactly what triggered the 429 storm.
+const STICKY_ACCOUNT_MS = positiveInt(process.env.ANIZIUM_STICKY_ACCOUNT_MS, 0);
+const accountStrikes = new Map();
 let accountCursor = 0;
 
 function cooldownKey(account, scope) {
@@ -192,6 +209,8 @@ function pickAccountForScopes(scopes) {
 }
 
 function markAccountSuccess(account, scopes) {
+  accountStrikes.delete(account.name);
+  if (STICKY_ACCOUNT_MS <= 0) return;
   const until = Date.now() + STICKY_ACCOUNT_MS;
   if (stickyAccounts.size > 256) {
     for (const [scope, sticky] of stickyAccounts) {
@@ -201,8 +220,15 @@ function markAccountSuccess(account, scopes) {
   for (const scope of scopes) stickyAccounts.set(scope, { name: account.name, until });
 }
 
-function markRateLimited(account, scope) {
-  accountCooldowns.set(cooldownKey(account, scope), Date.now() + RATE_LIMIT_COOLDOWN_MS);
+function markRateLimited(account, scope, cooldownMs) {
+  const strikes = (accountStrikes.get(account.name) || 0) + 1;
+  accountStrikes.set(account.name, strikes);
+  const backoff = Math.min(
+    RATE_LIMIT_MAX_COOLDOWN_MS,
+    RATE_LIMIT_COOLDOWN_MS * 2 ** Math.min(strikes - 1, 6)
+  );
+  const waitMs = cooldownMs ?? backoff;
+  accountCooldowns.set(cooldownKey(account, scope), Date.now() + waitMs);
   stickyAccounts.delete(scope);
 }
 
@@ -287,7 +313,14 @@ function isAllowedAssetUrl(url) {
   );
 }
 
-function buildAssetHeaders(req, account) {
+function buildAssetHeaders(req, account, video) {
+  if (video) {
+    return {
+      ...buildHeaders(account),
+      accept: "video/*,*/*;q=0.8",
+      "sec-fetch-dest": "video",
+    };
+  }
   return {
     ...buildHeaders(account),
     accept: req.headers.accept || "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -337,14 +370,25 @@ async function fetchAssetUpstream(targetUrl, req, signal, rangeHeader) {
   const alternate = alternateAssetHost(targetUrl);
   if (alternate) candidates.push(alternate);
   const scopes = candidates.map((url) => url.hostname + url.pathname);
+  const video = isVideoAsset(targetUrl);
+  let waited = false;
 
   for (;;) {
     const account = pickAccountForScopes(scopes);
     if (!account) {
-      return {
-        rateLimited: true,
-        retryAfter: Math.max(30, ...scopes.map((scope) => rateLimitRetryAfter(scope))),
-      };
+      const retryAfter = Math.max(1, ...scopes.map((scope) => rateLimitRetryAfter(scope)));
+      if (!waited && retryAfter * 1000 <= RATE_LIMIT_WAIT_MS) {
+        waited = true;
+        console.warn("[anizium-proxy] all accounts cooling; waiting shortly", {
+          host: targetUrl.hostname,
+          path: targetUrl.pathname,
+          retryAfter,
+        });
+        await sleep(retryAfter * 1000 + 250);
+        if (signal?.aborted) throw new Error("request aborted");
+        continue;
+      }
+      return { rateLimited: true, retryAfter };
     }
 
     let attempted = false;
@@ -354,7 +398,7 @@ async function fetchAssetUpstream(targetUrl, req, signal, rangeHeader) {
       if ((accountCooldowns.get(cooldownKey(account, scope)) || 0) > now) continue;
       attempted = true;
 
-      const headers = buildAssetHeaders(req, account);
+      const headers = buildAssetHeaders(req, account, video);
       const range = rangeHeader ?? req.headers.range;
       if (range) headers.range = range;
 
@@ -378,20 +422,27 @@ async function fetchAssetUpstream(targetUrl, req, signal, rangeHeader) {
         return { upstream, account, url: candidate };
       }
 
+      const retryAfter = retryAfterMs(upstream.headers.get("retry-after"));
       upstream.body?.destroy?.();
-      markRateLimited(account, scope);
+      markRateLimited(account, scope, retryAfter ?? undefined);
       console.warn("[anizium-proxy] asset rate limited; rotating account/host", {
         account: account.name,
         host: candidate.hostname,
         path: candidate.pathname,
+        retryAfter: retryAfter ? Math.ceil(retryAfter / 1000) : null,
+        strikes: accountStrikes.get(account.name),
       });
     }
 
     if (!attempted) {
-      return {
-        rateLimited: true,
-        retryAfter: Math.max(30, ...scopes.map((scope) => rateLimitRetryAfter(scope))),
-      };
+      const retryAfter = Math.max(1, ...scopes.map((scope) => rateLimitRetryAfter(scope)));
+      if (!waited && retryAfter * 1000 <= RATE_LIMIT_WAIT_MS) {
+        waited = true;
+        await sleep(retryAfter * 1000 + 250);
+        if (signal?.aborted) throw new Error("request aborted");
+        continue;
+      }
+      return { rateLimited: true, retryAfter };
     }
   }
 }
