@@ -203,6 +203,6 @@ export async function GET(req: NextRequest) {
   const cut = await resolveCut(target.toString());
   return NextResponse.json(
     { success: true, cut },
-    { headers: { "Cache-Control": "public, max-age=21600" } }
+    { headers: { "Cache-Control": cut ? "public, max-age=21600" : "no-store" } }
   );
 }

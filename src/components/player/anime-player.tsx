@@ -455,8 +455,9 @@ export function AnimePlayer({
     const url = active?.url;
     if (!url || !/\.(mp4|m4v|webm)(?:[?#]|$)/i.test(url)) return;
     const controller = new AbortController();
-    fetch(`/api/anizium/start-cut?url=${encodeURIComponent(url)}`, {
+    fetch(`/api/anizium/start-cut?url=${encodeURIComponent(url)}&v=2`, {
       signal: controller.signal,
+      cache: "no-store",
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
