@@ -242,7 +242,14 @@ export function AnimePlayer({
   const healthyTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
   const startCutRef = useRef<{ from: number; to: number } | null>(null);
-  const startCutAppliedRef = useRef(false);
+  // One startup-seek resolver owns every currentTime write made for a resume
+  // point or the Anizium bumper gap. The generation counter makes the "skip
+  // once per source load" rule explicit, so retries never seek in a loop.
+  const startupSeekGenRef = useRef(0);
+  const startupSeekTargetRef = useRef<number | null>(null);
+  const startupSettledRef = useRef(false);
+  const startupCutAppliedGenRef = useRef(-1);
+  const lastSeekTargetRef = useRef<number | null>(null);
   const [retryState, setRetryState] = useState<{ url: string | null; count: number }>({
     url: null,
     count: 0,
@@ -450,12 +457,16 @@ export function AnimePlayer({
   }, [active?.url, clearRetryTimer, clearStallTimer, clearHealthyTimer]);
 
   useEffect(() => {
+    startupSeekGenRef.current += 1;
+    startupCutAppliedGenRef.current = -1;
+    startupSettledRef.current = false;
+    startupSeekTargetRef.current = null;
+    lastSeekTargetRef.current = null;
     startCutRef.current = null;
-    startCutAppliedRef.current = false;
     const url = active?.url;
     if (!url || !/\.(mp4|m4v|webm)(?:[?#]|$)/i.test(url)) return;
     const controller = new AbortController();
-    fetch(`/api/anizium/start-cut?url=${encodeURIComponent(url)}&v=2`, {
+    fetch(`/api/anizium/start-cut?url=${encodeURIComponent(url)}&v=3`, {
       signal: controller.signal,
       cache: "no-store",
     })
@@ -469,10 +480,15 @@ export function AnimePlayer({
           cut.to > cut.from
         ) {
           startCutRef.current = { from: cut.from, to: cut.to };
+          // The cut can arrive while the player is paused (or already past the
+          // gap): resolve immediately instead of waiting for a time update.
+          resolveStartupSeek();
         }
       })
       .catch(() => {});
     return () => controller.abort();
+    // `resolveStartupSeek` only reads refs, so it must not re-run this fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.url]);
 
   useEffect(() => {
@@ -691,11 +707,74 @@ export function AnimePlayer({
     }
   }
 
+  /** A target too close to the tail cannot be seeked safely; null means "skip it". */
+  function safeSeekTarget(target: number | null): number | null {
+    if (target == null || !Number.isFinite(target) || target <= 0) return null;
+    const duration = playerRef.current?.state.duration ?? NaN;
+    if (Number.isFinite(duration) && duration > 0) {
+      const limit = duration - 5;
+      if (limit <= 0 || target >= limit) return null;
+    }
+    return target;
+  }
+
+  function startCutSeekTarget(cut: { from: number; to: number }): number | null {
+    return safeSeekTarget(cut.to + 0.05);
+  }
+
+  function performStartupSeek(target: number) {
+    const p = playerRef.current;
+    if (!p) return;
+    lastSeekTargetRef.current = target;
+    p.currentTime = target;
+  }
+
+  /**
+   * The single startup-seek resolver, used by can-play, by the start-cut
+   * response and by every time update. It only ever moves forward out of the
+   * bumper gap and settles at most once per source load.
+   */
+  function resolveStartupSeek(current?: number | null) {
+    const p = playerRef.current;
+    const cut = startCutRef.current;
+    if (!p || !cut) return;
+    const gen = startupSeekGenRef.current;
+    if (startupCutAppliedGenRef.current === gen) return;
+
+    const now = current ?? (startupSettledRef.current ? p.currentTime : null);
+    const pending = startupSeekTargetRef.current;
+    const insideGap = (value: number | null) =>
+      value != null && value >= cut.from && value < cut.to;
+
+    // Already beyond the bumper: record it as handled and never rewind.
+    if (now != null && now >= cut.to) {
+      startupCutAppliedGenRef.current = gen;
+      startupSeekTargetRef.current = null;
+      return;
+    }
+
+    if (!insideGap(now) && !insideGap(pending)) return;
+
+    startupCutAppliedGenRef.current = gen;
+    startupSeekTargetRef.current = null;
+    const target = startCutSeekTarget(cut);
+    if (target != null) performStartupSeek(target);
+  }
+
   function reloadSource() {
     const p = playerRef.current;
     if (p) {
       const time = p.currentTime;
       if (Number.isFinite(time) && time > 1) resumeFromRef.current = time;
+    }
+    // A retry is a new source load. Re-arm the cut only when playback resumes
+    // at or before the end of the gap; a resume beyond it must not rewind.
+    startupSeekGenRef.current += 1;
+    startupSettledRef.current = false;
+    startupSeekTargetRef.current = null;
+    lastSeekTargetRef.current = null;
+    if (!startCutRef.current || resumeFromRef.current == null || resumeFromRef.current <= startCutRef.current.to) {
+      startupCutAppliedGenRef.current = -1;
     }
     clearRetryTimer();
     clearStallTimer();
@@ -771,13 +850,33 @@ export function AnimePlayer({
       onPlayerReady(p);
     }
     if (seededRef.current) return;
-    const seekTo = resumeFromRef.current ?? (startAt && startAt > 5 ? startAt : null);
-    const duration = p.state.duration || Infinity;
-    if (seekTo && seekTo > 1 && seekTo < duration - 5) {
-      p.currentTime = seekTo;
-    }
-    resumeFromRef.current = null;
+    const desired = resumeFromRef.current ?? (startAt && startAt > 5 ? startAt : null);
+    const cut = startCutRef.current;
+    startupSettledRef.current = true;
     seededRef.current = true;
+    resumeFromRef.current = null;
+
+    if (desired != null && desired > 1) {
+      const insideGap = cut != null && desired >= cut.from && desired < cut.to;
+      if (insideGap && cut) {
+        // A resume point inside the bumper gap skips it instead of showing it.
+        startupSeekTargetRef.current = null;
+        startupCutAppliedGenRef.current = startupSeekGenRef.current;
+        const target = startCutSeekTarget(cut);
+        if (target != null) performStartupSeek(target);
+      } else {
+        const target = safeSeekTarget(desired);
+        if (target != null) performStartupSeek(target);
+        // While the cut is still unknown keep the desired point, so the
+        // resolver can move it out of the gap once detection answers.
+        startupSeekTargetRef.current = cut ? null : desired;
+      }
+    } else {
+      startupSeekTargetRef.current = null;
+    }
+
+    // A cached cut may already be known before the player became ready.
+    resolveStartupSeek(p.currentTime);
 
     if (playerPrefs.autoPlay && !autoplayAttemptedRef.current) {
       autoplayAttemptedRef.current = true;
@@ -791,13 +890,9 @@ export function AnimePlayer({
   function onTU(detail: MediaTimeUpdateEventDetail) {
     clearStallTimer();
     const t = detail.currentTime;
-    const startCut = startCutRef.current;
-    if (startCut && !startCutAppliedRef.current && t >= startCut.from && t < startCut.to) {
-      startCutAppliedRef.current = true;
-      const p = playerRef.current;
-      if (p) p.currentTime = startCut.to;
-      return;
-    }
+    // Run the cut resolver before the intro/outro bookkeeping: skipping the
+    // bumper must never suppress those updates.
+    resolveStartupSeek(t);
     // Intro skip visibility
     if (introStart != null && introEnd != null && introEnd > introStart) {
       setShowIntroSkip(t >= introStart && t < introEnd);
@@ -1182,9 +1277,19 @@ export function AnimePlayer({
           onPause?.();
         }}
         onSeeked={() => {
+          const p = playerRef.current;
+          const target = lastSeekTargetRef.current;
+          if (target != null) {
+            lastSeekTargetRef.current = null;
+            // A seek clamped near the tail never lands where we asked; drop the
+            // target and settle instead of fighting the element in a loop.
+            if (!p || Math.abs(p.currentTime - target) > 0.35) {
+              startupCutAppliedGenRef.current = startupSeekGenRef.current;
+            }
+          }
           cancelOutroAutoAdvance();
           if (!onSeeked) return;
-          const t = playerRef.current?.currentTime ?? 0;
+          const t = p?.currentTime ?? 0;
           onSeeked(t);
         }}
         className="anizium-player w-full overflow-hidden rounded-xl border border-[var(--border)] bg-black"

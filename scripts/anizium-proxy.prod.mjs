@@ -500,7 +500,8 @@ async function proxyAsset(targetUrl, req, res) {
 
   const startedAt = Date.now();
   const video = isVideoAsset(targetUrl);
-  const requestRange = req.headers.range || (video ? "bytes=0-" : undefined);
+  const clientRange = req.headers.range;
+  const requestRange = clientRange || (video ? "bytes=0-" : undefined);
   const streamId = `${startedAt.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   let clientAborted = false;
   let activeController = null;
@@ -656,7 +657,37 @@ async function proxyAsset(targetUrl, req, res) {
       if (value) responseHeaders[header] = value;
     }
 
-    res.writeHead(upstream.status, responseHeaders);
+    let responseStatus = upstream.status;
+    const total = span?.total ?? Number(upstream.headers.get("content-length"));
+    const wholeEntityRange =
+      typeof clientRange === "string" &&
+      /^bytes=0-$/i.test(clientRange.trim()) &&
+      !clientRange.includes(",");
+
+    // The upstream CDN answers `Range: bytes=0-` with a full 200 response.
+    // Gecko treats that as unseekable and aborts/reopens, so make the range
+    // explicit when the client asked for one.
+    if (wholeEntityRange && responseStatus === 200 && Number.isFinite(total) && total > 0) {
+      responseStatus = 206;
+      responseHeaders["accept-ranges"] = "bytes";
+      responseHeaders["content-range"] = `bytes 0-${total - 1}/${total}`;
+      responseHeaders["content-length"] = String(total);
+    } else if (!clientRange && responseStatus === 206 && span && span.start === 0 && span.total != null && span.end === span.total - 1) {
+      responseStatus = 200;
+      responseHeaders["accept-ranges"] = "bytes";
+      delete responseHeaders["content-range"];
+    } else if (wholeEntityRange && responseStatus === 200) {
+      console.warn("[anizium-proxy] range unfulfillable", {
+        host: targetUrl.hostname,
+        path: targetUrl.pathname,
+        total,
+      });
+    }
+
+    if (video) responseHeaders["accept-ranges"] = "bytes";
+    responseHeaders["Vary"] = "Range";
+
+    res.writeHead(responseStatus, responseHeaders);
 
     audit({
       type: "open",
@@ -666,7 +697,7 @@ async function proxyAsset(targetUrl, req, res) {
       range: requestRange || "full",
       account: account?.name,
       egress: account ? accountEgress(account) : "unknown",
-      status: upstream.status,
+      status: responseStatus,
       expected,
     });
 
@@ -930,6 +961,17 @@ async function fetchApiUpstream(url) {
         markRateLimited(account, scope);
         console.warn("[anizium-proxy] api rate limited; rotating account", {
           account: account.name,
+          url,
+        });
+        continue;
+      }
+
+      if (upstream.status === 401 || upstream.status === 403) {
+        upstream.body?.destroy?.();
+        markRateLimited(account, scope, 60_000);
+        console.warn("[anizium-proxy] api auth failed; rotating account", {
+          account: account.name,
+          status: upstream.status,
           url,
         });
         continue;
